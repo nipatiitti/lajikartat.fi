@@ -33,16 +33,16 @@ angler forums (kalastus.com) converging on the same factors.
 
 ## 2. Target archetype (quick reference)
 
-| Attribute            | Favourable for big perch                          |
-|----------------------|---------------------------------------------------|
-| Fishing pressure     | **Very low** (remote, gated/walk-in, unnamed)     |
-| Size                 | Small–medium (≈0.5–20 ha; up to ~50 ha "medium")  |
-| Isolation            | Closed/headwater basin, few/no in-out streams     |
-| Water colour         | Clear to moderately stained (LOW peatland in catchment) |
-| Trophic state        | Oligo-meso to meso (intermediate optimum)         |
-| Catchment soil       | Mineral / esker (harju) > peatland                |
-| Thinning mechanism   | Perch-only cannibalism OR periodic winterkill     |
-| Prey base            | Small fish and/or large macroinvertebrates present|
+| Attribute          | Favourable for big perch                                |
+| ------------------ | ------------------------------------------------------- |
+| Fishing pressure   | **Very low** (remote, gated/walk-in, unnamed)           |
+| Size               | Small–medium (≈0.5–20 ha; up to ~50 ha "medium")        |
+| Isolation          | Closed/headwater basin, few/no in-out streams           |
+| Water colour       | Clear to moderately stained (LOW peatland in catchment) |
+| Trophic state      | Oligo-meso to meso (intermediate optimum)               |
+| Catchment soil     | Mineral / esker (harju) > peatland                      |
+| Thinning mechanism | Perch-only cannibalism OR periodic winterkill           |
+| Prey base          | Small fish and/or large macroinvertebrates present      |
 
 Anti-pattern (down-rank hard): dystrophic peat puddle, heavily browned,
 cyprinid-dominated, roadside/popular, or already in any public fishing-spot list.
@@ -62,38 +62,44 @@ confidence — do not silently treat missing as 0.
 > resolve them against the live OGC API Features `/collections` listing at
 > implementation time rather than hard-coding from this doc.
 
-### F1 — Fishing-pressure / remoteness  ·  weight 0.30  ·  confidence HIGH
+### F1 — Fishing-pressure / remoteness · weight 0.30 · confidence HIGH
+
 **The single strongest factor.** Higher remoteness ⇒ higher sub-score.
 Inputs (MML topographic DB + your existing access filters):
+
 - distance from pond shoreline to nearest drivable road (`tieviiva`/road class)
 - access type: paved/gravel road < gated forest road (puomi) < trail < none
-  (bike/walk-in is *better* here, not worse)
+  (bike/walk-in is _better_ here, not worse)
 - count of buildings within 100 m of shoreline (`rakennus`) — 0 is best
 - distance to nearest town/parking/boat ramp
 - **exclusion/penalty if the waterbody name appears in any public fishing
   dataset** (kalapaikka.net listings, stocked-water lists, Järviwiki popular
   lakes). Named + stocked + roadside = stunting risk.
-Suggested transform: monotonic increasing in remoteness, saturating (e.g. log of
-distance, capped). Combine sub-signals as a min/weighted-mean so one easy access
-route dominates (a pond is only as unfished as its easiest entry).
+  Suggested transform: monotonic increasing in remoteness, saturating (e.g. log of
+  distance, capped). Combine sub-signals as a min/weighted-mean so one easy access
+  route dominates (a pond is only as unfished as its easiest entry).
 
-### F2 — Isolation / closed basin  ·  weight 0.15  ·  confidence MED
+### F2 — Isolation / closed basin · weight 0.15 · confidence MED
+
 Isolation supports the cannibal-control regime and limits cyprinid colonisation.
 Inputs (MML `virtavesi` streams + topology; cross-check with **SYKE VesiPetoDW
 national stream network** and the catchment-division ID from **Järvirajapinta**):
+
 - number of stream segments connecting to the pond polygon (0 = closed basin,
   best; 1 = headwater; ≥2 = through-flow, lower)
 - whether the pond is a network headwater (no upstream lakes)
-Direction: fewer connections ⇒ higher sub-score.
+  Direction: fewer connections ⇒ higher sub-score.
 
-### F3 — Water colour / humic load  ·  weight 0.20  ·  confidence MED→HIGH
+### F3 — Water colour / humic load · weight 0.20 · confidence MED→HIGH
+
 **Inverted folk wisdom: browner = smaller perch.** Lower colour ⇒ higher score.
 Preferred input (where it exists): **SYKE surface-water-quality open interface
-(VESLA)** — measured water colour (mg Pt/l), Secchi, and the WFD lake *type*
+(VESLA)** — measured water colour (mg Pt/l), Secchi, and the WFD lake _type_
 (which encodes a humus class). High confidence where present; sparse for ponds
 < ~50 ha. See §4.
 Proxy (default, always available): **peatland fraction in the contributing
 catchment**.
+
 - catchment: use **SYKE WSFS-Vemala sub-catchments** (200k+ ready-made basins) —
   no DEM watershedding needed; fall back to a fixed buffer (~500 m) only if
   Vemala isn't wired up yet.
@@ -104,10 +110,11 @@ catchment**.
   project layers in the catchment = recent browning spike → extra down-weight
   (note: planned ≠ always realised; treat as a soft negative).
 - bonus signal: esker/`harju` / mineral-soil and pine-heath surroundings → clearer.
-Direction: high peatland % ⇒ low sub-score (browner); low peatland %, mineral/
-esker catchment ⇒ high sub-score. Treat extreme dystrophy as a hard down-rank.
+  Direction: high peatland % ⇒ low sub-score (browner); low peatland %, mineral/
+  esker catchment ⇒ high sub-score. Treat extreme dystrophy as a hard down-rank.
 
-### F4 — Trophic state / productivity  ·  weight 0.10  ·  confidence MED
+### F4 — Trophic state / productivity · weight 0.10 · confidence MED
+
 Intermediate (meso) optimum: too oligotrophic = little food; too eutrophic =
 cyprinid takeover + turbidity. Peak the sub-score in the middle.
 Preferred input: **SYKE VESLA** total phosphorus / chlorophyll-a, and/or the
@@ -119,8 +126,10 @@ catchment) — rising ag% → eutrophication risk → down past the optimum; pur
 forest+little mire → oligo end.
 Transform: unimodal (e.g. Gaussian) centred on mesotrophy.
 
-### F5 — Morphometry: size & depth  ·  weight 0.15  ·  confidence MED (size/depth)
+### F5 — Morphometry: size & depth · weight 0.15 · confidence MED (size/depth)
+
 Inputs:
+
 - area: MML water polygon, cross-checked with **SYKE Järvirajapinta / VesiPetoDW**
   (computed area + shoreline for all standing waters >1 ha; tiny ponds <1 ha
   still MML-only). Target band 0.5–20 ha (extend to ~50 ha for "medium"). Outside
@@ -135,8 +144,9 @@ Inputs:
 - structure bonus: **VesiPetoDW** island count + shoreline-length-to-area
   (shoreline development) = more littoral structure/cover — small positive.
 
-### F6 — Thinning-mechanism / winterkill potential  ·  weight 0.10  ·  confidence LOW
-Episodic oxygen depletion under ice that thins competitors is a *positive* for
+### F6 — Thinning-mechanism / winterkill potential · weight 0.10 · confidence LOW
+
+Episodic oxygen depletion under ice that thins competitors is a _positive_ for
 big perch, but severe/chronic kill = fishless, so this is ambiguous and weak.
 Proxy: small + shallow + closed basin (reuse F2/F5) + NOT strongly through-flowing.
 Regional modifier: **SYKE Hydrology API** (ice thickness, water temperature,
@@ -146,7 +156,8 @@ as a small bonus when (area small) AND (likely shallow) AND (isolated), nudged b
 regional ice duration, capped low. Do not let it override F3 (a winterkill pond
 that is also strongly humic is still a small-perch factory).
 
-### F7 — Prey / fish community  ·  weight 0.05 (low, conditional)  ·  confidence LOW→MED where data exists
+### F7 — Prey / fish community · weight 0.05 (low, conditional) · confidence LOW→MED where data exists
+
 Sparse but no longer a total blind spot. **Luke Kalahavainnot** (national fish-
 observation register: species occurrence, abundance, species ratios, **age
 structure**) — also reachable via the **laji.fi / FinBIF keyed API**, which
@@ -160,6 +171,7 @@ flag rather than guessing. Only let this contribute (weight 0.05) when real data
 exists; otherwise null.
 
 ### Excluded by design
+
 Temperature/year-class strength (warm summers → strong cohorts → cannibalism →
 giants) is real but not spatially actionable per-pond at regional scale — treat
 as a regional constant, document, ignore in scoring.
@@ -169,6 +181,7 @@ as a regional constant, document, ignore in scoring.
 ## 4. Data sources (verified June 2026 — resolve exact endpoints/params at build)
 
 Geometry & terrain (MML, API key, CC BY 4.0, EPSG:3067 → reproject before Turf):
+
 - **Maastotietokanta — OGC API Features**: water polygons, streams, roads,
   trails, buildings, mire (`suo`) polygons. Use Features (no generalisation) for
   analysis; vector/raster tiles only for rendering. (Schema renewed spring 2025
@@ -177,6 +190,7 @@ Geometry & terrain (MML, API key, CC BY 4.0, EPSG:3067 → reproject before Turf
   delineation if NOT using Vemala.
 
 Water quality, catchment & status (SYKE, CC BY 4.0, OData via rajapinnat.ymparisto.fi / syke.fi open web services):
+
 - **VESLA — surface-water-quality open interface** (OData): measured colour,
   Secchi, TP, chl-a, oxygen for lakes/rivers/small waters, 1960s→. F3/F4.
 - **Järvirajapinta — lake register** (OData 3.0): identity, physiography and
@@ -188,7 +202,7 @@ Water quality, catchment & status (SYKE, CC BY 4.0, OData via rajapinnat.ymparis
 - **Hydrology API** (OData): ice thickness, water temperature, ice-cover
   duration, runoff, water level (~5000 sites; ~50 inland ice stations, modeled).
   F6 regional climatology only — not pond-specific.
-- **WFD water bodies (vesimuodostumat)**: lake *type* (humus + depth class) and
+- **WFD water bodies (vesimuodostumat)**: lake _type_ (humus + depth class) and
   ecological/chemical status. Pre-labelled humic/trophic class — but only for
   classified ("significant") bodies. F3/F4.
 - **WSFS-Vemala**: 200k+ ready-made stream/lake **sub-catchments** + modeled
@@ -199,6 +213,7 @@ Water quality, catchment & status (SYKE, CC BY 4.0, OData via rajapinnat.ymparis
   forest), computed over the Vemala catchment. F3/F4.
 
 Catchment soil & forestry disturbance:
+
 - **GTK Maaperä / superficial deposits** (open WMS/WFS, 1:20k–1:200k): esker/
   glaciofluvial, till, peat polygons → clear-vs-brown proxy for F3.
 - **Metsäkeskus** (open WMS/WCS/WFS + REST; data model mid-reform): ditch-
@@ -206,6 +221,7 @@ Catchment soil & forestry disturbance:
   signal for F3. Caveat: planned ≠ always realised.
 
 Fish (CC BY 4.0):
+
 - **Luke Kalahavainnot — national fish-observation register** (opendata.luke.fi /
   INSPIRE): species occurrence, abundance, species ratios, age structure. F7.
 - **laji.fi / FinBIF** (keyed REST API): aggregated species occurrences incl.
@@ -214,6 +230,7 @@ Fish (CC BY 4.0):
   open API found — likely a data request.)
 
 Legality layer (NOT a scoring factor — required for the app regardless):
+
 - **kalastusrajoitus.fi** (MMM + ELY): areas outside general fishing rights,
   restriction/closed areas, migratory-fish waters; updated weekdays. NOT
   comprehensive — does not include all private-owner restrictions.
@@ -224,6 +241,7 @@ Legality layer (NOT a scoring factor — required for the app regardless):
   kalastusrajoitus.fi is primarily a map service.)
 
 Confirmed no clean programmatic endpoint (handle accordingly):
+
 - **kalastusrajoitus.fi / eraluvat.fi**: map services, no documented open feature
   API found (possibly an undocumented ArcGIS REST backend). Overlay via their map
   service or request data; do not assume a queryable API.
