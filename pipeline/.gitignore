@@ -1,0 +1,5 @@
+.cache/
+.env
+node_modules/
+out/
+.svelte-kit/

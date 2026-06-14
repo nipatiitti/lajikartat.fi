@@ -8,6 +8,22 @@
     "binding": "ASSETS",
     "directory": ".svelte-kit/cloudflare"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lajikartat",
+      // Placeholder for local-first dev (miniflare). Replace with the real id
+      // from `wrangler d1 create lajikartat` before deploying.
+      "database_id": "local-dev-placeholder",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "GEOMETRY",
+      "bucket_name": "lajikartat-geometry"
+    }
+  ],
   "workers_dev": true,
   "preview_urls": true
 }

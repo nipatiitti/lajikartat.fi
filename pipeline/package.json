@@ -1,0 +1,25 @@
+{
+  "name": "@lajikartat/pipeline",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "probe": "tsx src/kernel/probe-collections.ts",
+    "ingest": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/kernel/run.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.3.5",
+    "flatbush": "^4.4.0",
+    "p-limit": "^6.2.0",
+    "proj4": "^2.15.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.14",
+    "@types/node": "^22",
+    "@types/proj4": "^2.5.6",
+    "tsx": "^4.20.3",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}
