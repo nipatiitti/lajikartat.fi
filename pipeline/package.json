@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "probe": "tsx src/kernel/probe-collections.ts",
+    "probe:score": "tsx src/kernel/probe-scoring.ts",
     "ingest": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/kernel/run.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

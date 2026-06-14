@@ -1,4 +1,4 @@
-import { centroid, length } from '@turf/turf'
+import { centroid, length, simplify } from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { scorePerch } from '@scoring'
 import type { AccessType, PerchInput } from '@scoring'
@@ -10,7 +10,9 @@ const SOIL_CLASS_FIELD = 'PINTAMAALAJI'
 
 /** Compose the kernel spatial primitives into a PerchInput, then score it. */
 export function scorePerchCandidate(candidate: CandidateFeature, ctx: JoinContext): ScoredCandidate {
-  const pond = candidate.geometry
+  // Coarsen the shoreline once for distance/intersection work — F1/F2 don't need
+  // every vertex, and a detailed 39 ha pond is otherwise O(thousands) per call.
+  const pond = simplify(candidate.geometry, { tolerance: 0.0002, highQuality: false, mutate: false })
   const center = centroid(pond)
 
   // F1 — roads present but none within range ⇒ very remote (cap), not "no data".
@@ -36,8 +38,8 @@ export function scorePerchCandidate(candidate: CandidateFeature, ctx: JoinContex
     }
   }
 
-  // F5
-  const perimeterM = length(pond, { units: 'kilometers' }) * 1000
+  // F5 — perimeter from the FULL geometry for an accurate shoreline-development ratio.
+  const perimeterM = length(candidate.geometry, { units: 'kilometers' }) * 1000
   const areaM2 = candidate.areaHa * 10_000
   const shorelineDevelopment = areaM2 > 0 ? perimeterM / (2 * Math.sqrt(Math.PI * areaM2)) : null
 
