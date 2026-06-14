@@ -1,2 +1,2 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<!-- Never rendered: the +page.ts load redirects to the species map. Kept so the route resolves. -->
+<p class="p-8 text-gray-500">Redirecting…</p>
