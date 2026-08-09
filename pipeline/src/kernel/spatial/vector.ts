@@ -1,9 +1,11 @@
 import {
+  along,
   booleanIntersects,
   booleanPointInPolygon,
   bbox as turfBbox,
   centroid,
   distance,
+  length as turfLength,
   lineString,
   pointToLineDistance,
   simplify
@@ -221,6 +223,33 @@ export function buildJoinContext(bundle: LayerBundle): JoinContext {
           if (!booleanPointInPolygon([lng, lat], simplified)) continue
           const cls = classAt(layerKey, lng, lat, classField)
           if (cls === null) continue // no layer polygon here (water/gap)
+          sampled++
+          counts[cls] = (counts[cls] ?? 0) + 1
+        }
+      }
+      if (sampled === 0) return out
+      for (const [cls, c] of Object.entries(counts)) out[cls] = c / sampled
+      return out
+    },
+
+    classFractionAlongLine(line, layerKey, classField, samples = 20) {
+      const out: Record<string, number> = {}
+      if (!layers[layerKey]?.index) return out
+      // Distribute `samples` points along the reach (proportional to each part's
+      // length for MultiLineString) and classify each by the layer polygon it lands
+      // in — the line analogue of areaFractionByClass.
+      const parts = ringsToLines(line.geometry)
+      const lens = parts.map((l) => turfLength(l, { units: 'kilometers' }))
+      const total = lens.reduce((s, v) => s + v, 0)
+      if (total === 0) return out
+      const counts: Record<string, number> = {}
+      let sampled = 0
+      for (let p = 0; p < parts.length; p++) {
+        const n = Math.max(1, Math.round((samples * lens[p]) / total))
+        for (let k = 0; k < n; k++) {
+          const [lng, lat] = along(parts[p], (lens[p] * (k + 0.5)) / n, { units: 'kilometers' }).geometry.coordinates
+          const cls = classAt(layerKey, lng, lat, classField)
+          if (cls === null) continue
           sampled++
           counts[cls] = (counts[cls] ?? 0) + 1
         }

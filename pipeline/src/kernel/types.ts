@@ -30,8 +30,10 @@ export interface RegionMask {
 export interface CandidateFeature {
   id: string
   name: string | null
-  geometry: Feature<Polygon | MultiPolygon>
-  areaHa: number
+  /** Polygon (perch ponds) or LineString (trout stream reaches). */
+  geometry: Feature<Geometry>
+  /** Area in ha for polygon candidates; null for line reaches (no area). */
+  areaHa: number | null
 }
 
 export interface ScoredCandidate {
@@ -61,6 +63,14 @@ export interface JoinContext {
     polygon: Feature<Polygon | MultiPolygon>,
     layerKey: string,
     classField: string
+  ): Record<string, number>
+  /** Class composition sampled at evenly-spaced points ALONG a line reach — the
+   * line analogue of areaFractionByClass (e.g. GTK substrate along a stream). */
+  classFractionAlongLine(
+    line: Feature<LineString | MultiLineString>,
+    layerKey: string,
+    classField: string,
+    samples?: number
   ): Record<string, number>
 }
 

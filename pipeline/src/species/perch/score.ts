@@ -39,8 +39,10 @@ export function scorePerchCandidate(candidate: CandidateFeature, ctx: JoinContex
   }
 
   // F5 — perimeter from the FULL geometry for an accurate shoreline-development ratio.
+  // Perch candidates are always area-bearing polygons, so areaHa is non-null here.
+  const areaHa = candidate.areaHa ?? 0
   const perimeterM = length(candidate.geometry, { units: 'kilometers' }) * 1000
-  const areaM2 = candidate.areaHa * 10_000
+  const areaM2 = areaHa * 10_000
   const shorelineDevelopment = areaM2 > 0 ? perimeterM / (2 * Math.sqrt(Math.PI * areaM2)) : null
 
   const input: PerchInput = {
@@ -52,7 +54,7 @@ export function scorePerchCandidate(candidate: CandidateFeature, ctx: JoinContex
     isHeadwater: null,
     peatFraction,
     eskerFraction,
-    areaHa: candidate.areaHa,
+    areaHa,
     shorelineDevelopment,
     maxDepthM: null
   }

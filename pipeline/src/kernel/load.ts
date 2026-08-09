@@ -101,9 +101,11 @@ function resetStatements(species: string, region: string): string[] {
   ]
 }
 
+// Species-agnostic render properties: the map colours/filters/ranks straight off
+// composite + confidence. Per-factor detail is read from D1 on click (it lives in
+// candidate_score.factors), so the geometry blob carries no factor keys.
 function renderFeature(id: string, candidate: CandidateFeature, score: ScoredCandidate): Feature {
   const simplified = simplify(candidate.geometry, { tolerance: 0.0001, highQuality: false, mutate: false })
-  const f = score.factors
   return {
     type: 'Feature',
     id,
@@ -111,11 +113,7 @@ function renderFeature(id: string, candidate: CandidateFeature, score: ScoredCan
       id,
       name: candidate.name,
       composite: round(score.composite),
-      confidence: score.confidence,
-      f1: f.F1?.subScore ?? null,
-      f2: f.F2?.subScore ?? null,
-      f3: f.F3?.subScore ?? null,
-      f5: f.F5?.subScore ?? null
+      confidence: score.confidence
     },
     geometry: simplified.geometry
   }
