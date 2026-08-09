@@ -17,7 +17,7 @@ export function scorePerch(input: PerchInput): CompositeResult {
       { id: 'F5', label: PERCH_FACTOR_LABELS.F5, weight: PERCH_WEIGHTS.F5, result: f5Morphometry(input) }
     ],
     {
-      notes: ['Varmista kalasto paikan päällä', 'Isojen ahventen kannat ovat herkkiä — vapauta suurimmat kalat']
+      notes: ['Varmista kalasto paikan päällä', 'Isojen ahventen kannat ovat herkkiä: vapauta suurimmat kalat']
     }
   )
 }

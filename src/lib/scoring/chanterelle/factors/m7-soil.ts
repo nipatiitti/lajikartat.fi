@@ -22,7 +22,7 @@ export function m7Soil(input: ChanterelleInput, variant: ChanterelleVariant): Fa
     if (peat > 0.5) drivers.push('pääosin turvemaata')
     else if (peat < 0.15 && rock < 0.3) drivers.push('kivennäismaata (moreeni/hiekka)')
     if (rock > 0.4)
-      drivers.push(variant === 'kantarelli' ? 'kallioista — tarkista paisteiset männikönreunat' : 'kuivaa kalliomaata')
+      drivers.push(variant === 'kantarelli' ? 'kallioista, tarkista paisteiset männikönreunat' : 'kuivaa kalliomaata')
 
     return { subScore: clamp(subScore), confidence: 'med', drivers }
   }

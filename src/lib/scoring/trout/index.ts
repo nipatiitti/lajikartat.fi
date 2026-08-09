@@ -12,10 +12,10 @@ import { TROUT_FACTOR_LABELS, TROUT_MODULATOR_BANDS } from './weights'
 
 // Conservation ethic travels with every candidate (species/trout.md §6).
 const CONSERVATION_NOTES = [
-  'Wild brown trout S of 64°N are protected — catch & release only (barbless, wet hands, quick release)',
+  'Wild brown trout S of 64°N are protected: catch & release only (barbless, wet hands, quick release)',
   'Small natural brooks are protected under the Water Act',
   'Do not publish precise coordinates of wild-trout brooks',
-  'Puronieriä (brook trout) is invasive — removal often encouraged; verify local rules'
+  'Puronieriä (brook trout) is invasive, removal often encouraged; verify local rules'
 ]
 
 /**

@@ -32,18 +32,18 @@ export function m6Edges(input: ChanterelleInput, variant: ChanterelleVariant): F
   const ditchSignal = Math.max(...ditchSignals)
 
   if (trackSignal > 0.6 && nearestTrackM !== null) {
-    drivers.push(`metsätie tai polku ${Math.round(nearestTrackM)} m päässä — kulje sen reunoja`)
+    drivers.push(`metsätie tai polku ${Math.round(nearestTrackM)} m päässä, kulje sen reunoja`)
   }
   if (ditchSignal >= 1 && ditchesIntersectingCount !== null && ditchesIntersectingCount > 0) {
     drivers.push(
       ditchesIntersectingCount === 1
-        ? 'oja halkoo metsikköä — tarkista penkat'
-        : `${ditchesIntersectingCount} ojaa halkoo metsikköä — tarkista penkat`
+        ? 'oja halkoo metsikköä, tarkista penkat'
+        : `${ditchesIntersectingCount} ojaa halkoo metsikköä, tarkista penkat`
     )
   } else if (ditchSignal > 0.6 && nearestDitchM !== null && prox(nearestDitchM) === ditchSignal) {
     drivers.push(`oja ${Math.round(nearestDitchM)} m päässä`)
   } else if (isDrainedPeatland === true && ditchSignal === 0.7) {
-    drivers.push('ojitettu metsikkö — ojaverkosto sisällä')
+    drivers.push('ojitettu metsikkö (ojaverkosto sisällä)')
   }
 
   const signal = Math.max(w.track * trackSignal, w.ditch * ditchSignal)

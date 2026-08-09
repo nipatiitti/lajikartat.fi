@@ -35,7 +35,7 @@ export function m1Hosts(input: ChanterelleInput, variant: ChanterelleVariant): F
       } else if (mixedness >= 0.35) {
         drivers.push('sekametsä (parhaat kantarellisadot)')
       } else {
-        drivers.push('lähes yhden puulajin metsä — kelvollinen muttei paras')
+        drivers.push('lähes yhden puulajin metsä, kelvollinen muttei paras')
       }
     } else {
       // Spruce-driven; saturates at ≥50 % spruce; deciduous dominance is bad.

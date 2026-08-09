@@ -16,7 +16,7 @@ export function m9Remoteness(input: ChanterelleInput): FactorResult {
   if (input.nearestCarRoadM !== null) {
     signals.push(logSaturate(input.nearestCarRoadM, 2000))
     if (input.nearestCarRoadM > 1000) drivers.push(`${(input.nearestCarRoadM / 1000).toFixed(1)} km autotielle`)
-    else if (input.nearestCarRoadM < 150) drivers.push('aivan autotien vieressä — todennäköisesti kaluttu')
+    else if (input.nearestCarRoadM < 150) drivers.push('aivan autotien vieressä, todennäköisesti kaluttu')
   }
 
   if (input.buildingsWithin500m !== null) {

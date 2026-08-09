@@ -57,8 +57,8 @@ export const CHANTERELLE_PARAMS: Record<ChanterelleVariant, ChanterelleParams> =
 
 // Ethics & legal notes travel with every candidate (species/chantarelle.md §5).
 export const CHANTERELLE_NOTES = [
-  'Poimiminen on sallittua jokamiehenoikeudella — ei kuitenkaan pihoilla, viljelmillä eikä luonnonsuojelualueiden rajoitusosissa',
+  'Poimiminen on sallittua jokamiehenoikeudella, ei kuitenkaan pihoilla, viljelmillä eikä luonnonsuojelualueiden rajoitusosissa',
   'Tunnistus on aina poimijan omalla vastuulla',
-  'Älä haravoi tai riko sammalta — nosta varovasti ja jätä pienimmät kasvamaan',
-  'Löytöpaikka tuottaa yleensä vuosittain (sienirihmasto säilyy) — paina mieleen'
+  'Älä haravoi tai riko sammalta: nosta varovasti ja jätä pienimmät kasvamaan',
+  'Löytöpaikka tuottaa yleensä vuosittain (sienirihmasto säilyy), paina se mieleen'
 ]

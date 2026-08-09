@@ -1,20 +1,29 @@
 <script module lang="ts">
-  export type SheetSnap = 'collapsed' | 'half' | 'full'
+  export type SheetSnap = 'half' | 'full'
 </script>
 
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  let { snap = $bindable('half'), children }: { snap?: SheetSnap; children: Snippet } = $props()
+  let {
+    snap = $bindable('half'),
+    onclose,
+    children
+  }: {
+    snap?: SheetSnap
+    /** Called when the sheet is swiped down past the dismiss threshold. */
+    onclose?: () => void
+    children: Snippet
+  } = $props()
 
-  const SNAP_HEIGHTS: Record<SheetSnap, string> = { collapsed: '5.5rem', half: '45dvh', full: '85dvh' }
+  const SNAP_HEIGHTS: Record<SheetSnap, string> = { half: '45dvh', full: '85dvh' }
 
   let sheet = $state<HTMLDivElement>()
   let dragging = $state(false)
   let dragHeight = $state<number | null>(null)
   let moved = false
 
-  // Drag lives on the grab handle only — the map keeps its gestures and the
+  // Drag lives on the grab handle only: the map keeps its gestures and the
   // sheet body keeps native scrolling.
   function onPointerDown(e: PointerEvent) {
     if (!sheet) return
@@ -33,15 +42,15 @@
       window.removeEventListener('pointerup', onUp)
       dragging = false
       const height = dragHeight ?? startHeight
-      const vh = window.innerHeight
-      const targets: Array<[SheetSnap, number]> = [
-        ['collapsed', 88],
-        ['half', vh * 0.45],
-        ['full', vh * 0.85]
-      ]
-      if (moved)
-        snap = targets.reduce((best, t) => (Math.abs(t[1] - height) < Math.abs(best[1] - height) ? t : best))[0]
       dragHeight = null
+      if (!moved) return
+      const vh = window.innerHeight
+      // Swiping well below the half snap dismisses the card.
+      if (height < vh * 0.25 && onclose) {
+        onclose()
+        return
+      }
+      snap = Math.abs(vh * 0.45 - height) < Math.abs(vh * 0.85 - height) ? 'half' : 'full'
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -49,7 +58,7 @@
 
   function onHandleClick() {
     if (moved) return
-    snap = snap === 'collapsed' ? 'half' : snap === 'half' ? 'full' : 'collapsed'
+    snap = snap === 'half' ? 'full' : 'half'
   }
 </script>
 

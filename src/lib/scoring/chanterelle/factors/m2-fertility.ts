@@ -34,7 +34,7 @@ export function m2Fertility(input: ChanterelleInput, variant: ChanterelleVariant
   if (input.subgroup !== null && input.subgroup !== 'kangas') {
     subScore *= params.subgroupMultiplier[input.subgroup]
     if (input.subgroup === 'korpi' && variant === 'suppilovahvero') {
-      drivers.push('korpinen reuna — sopii suppilovahverolle')
+      drivers.push('korpinen reuna, sopii suppilovahverolle')
     } else {
       drivers.push(input.subgroup === 'korpi' ? 'korpea' : input.subgroup === 'rame' ? 'rämettä' : 'avosuota')
     }

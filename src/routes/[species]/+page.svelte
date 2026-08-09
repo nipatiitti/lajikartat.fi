@@ -2,14 +2,14 @@
   import { browser } from '$app/env'
   import { afterNavigate, replaceState } from '$app/navigation'
   import { page } from '$app/state'
-  import { MediaQuery } from 'svelte/reactivity'
   import MapView from '$lib/components/Map.svelte'
   import DesktopShell from '$lib/components/shell/DesktopShell.svelte'
   import MobileShell from '$lib/components/shell/MobileShell.svelte'
   import { COPY } from '$lib/copy'
   import { formatCameraHash, parseCameraHash, type Camera } from '$lib/map/url'
-  import { MapPageState } from '$lib/state/map-page.svelte'
   import { SPECIES_RENDER } from '$lib/species/registry'
+  import { MapPageState } from '$lib/state/map-page.svelte'
+  import { MediaQuery } from 'svelte/reactivity'
 
   const species = $derived(page.params.species ?? '')
   const config = $derived(SPECIES_RENDER[species])
@@ -51,7 +51,7 @@
   })
 </script>
 
-<svelte:head><title>{config?.label ?? species} — lajikartat.fi</title></svelte:head>
+<svelte:head><title>{config?.label ?? species} · lajikartat.fi</title></svelte:head>
 
 {#if !config}
   <div class="p-8 text-gray-600">

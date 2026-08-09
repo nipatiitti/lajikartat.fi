@@ -4,10 +4,10 @@
 </script>
 
 <svelte:head>
-  <title>lajikartat.fi — lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta</title>
+  <title>lajikartat.fi · lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta</title>
   <meta
     name="description"
-    content="Avoin kartta-apuri kalastajille ja sienestäjille: missä isot ahvenet, kantarellit ja suppilovahverot todennäköisimmin ovat — avoimen paikkatiedon perusteella."
+    content="Avoin kartta-apuri kalastajille ja sienestäjille: missä isot ahvenet, kantarellit ja suppilovahverot todennäköisimmin ovat avoimen paikkatiedon perusteella."
   />
 </svelte:head>
 
@@ -17,7 +17,7 @@
       <h1 class="text-3xl font-bold tracking-tight">lajikartat.fi</h1>
       <p class="max-w-xl text-gray-600">
         Lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta. Kartat arvioivat, missä lajin elinympäristö on
-        parhaimmillaan — ne eivät takaa saalista, vaan kertovat mistä kannattaa aloittaa.
+        parhaimmillaan. Ne eivät takaa saalista, vaan kertovat mistä kannattaa aloittaa.
       </p>
     </header>
 
@@ -47,9 +47,10 @@
       <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Näin luet karttaa</h2>
       <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
         <p>
-          <strong class="text-gray-800">Potentiaali</strong> (0–100 %) kertoo, kuinka hyvin kohde vastaa lajin
-          tunnettuja elinympäristövaatimuksia. Se lasketaan etukäteen avoimista aineistoista — maastossa asiat voivat
-          aina olla toisin. <strong class="text-gray-800">Varmuus</strong> kertoo, kuinka kattavaa lähtötieto kohteella oli.
+          <strong class="text-gray-800">Potentiaali</strong> (0–100) vertailee alueita: se kertoo, kuinka hyvin kohde
+          vastaa lajin tunnettuja elinympäristövaatimuksia. Se ei ennusta saalista. Arvio lasketaan etukäteen avoimista
+          aineistoista, ja maastossa asiat voivat aina olla toisin.
+          <strong class="text-gray-800">Varmuus</strong> kertoo, kuinka kattavaa lähtötieto kohteella oli.
         </p>
         {#each speciesIds as id (id)}
           {@const s = SPECIES_RENDER[id]}
@@ -68,9 +69,9 @@
         Aineistot:
         {#each DATA_SOURCES as source, i (source.name)}
           <a href={source.url} class="underline hover:text-gray-700" target="_blank" rel="noopener">{source.name}</a
-          >{i < DATA_SOURCES.length - 1 ? ', ' : ''}
+          >{i < DATA_SOURCES.length - 1 ? ', ' : ','}
         {/each}
-        — lisenssillä
+        lisenssillä
         <a
           href="https://creativecommons.org/licenses/by/4.0/deed.fi"
           class="underline hover:text-gray-700"
@@ -80,7 +81,7 @@
       </p>
       <p>
         Liiku jokamiehenoikeuksien mukaisesti: älä poimi pihoilta, viljelmiltä tai luonnonsuojelualueiden
-        rajoitusosista. Sienten tunnistus on aina poimijan omalla vastuulla — jätä osa sadosta metsään. Isojen ahventen
+        rajoitusosista. Sienten tunnistus on aina poimijan omalla vastuulla. Jätä osa sadosta metsään. Isojen ahventen
         kannat ovat herkkiä: vapauta suurimmat kalat.
       </p>
       <p class="pt-2 text-gray-400">lajikartat.fi · avoin harrasteprojekti</p>

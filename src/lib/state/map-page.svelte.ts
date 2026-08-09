@@ -1,7 +1,6 @@
 import type { FeatureCollection, Geometry, Position } from 'geojson'
-import { haversineM } from '$lib/geo/distance'
 import { DEFAULT_BASEMAP, type BasemapId } from '$lib/map/basemaps'
-import { ALL_CONFIDENCES, type CandidateFilter, type CandidateProps, type SortMode } from '$lib/map/types'
+import type { CandidateFilter, CandidateProps } from '$lib/map/types'
 import type { SpeciesRenderConfig } from '$lib/species/registry'
 
 export interface MapController {
@@ -22,22 +21,20 @@ export interface LayerSettings {
 }
 
 /**
- * Single source of truth for the /[laji] map page. Shells (mobile sheet,
- * desktop sidebar) and MapView are pure presentation over this API — swapping
+ * Single source of truth for the /[laji] map page. Shells (mobile card sheet,
+ * desktop panel) and MapView are pure presentation over this API. Swapping
  * a shell touches one import, never this class.
  */
 export class MapPageState {
   geojson = $state<FeatureCollection | null>(null)
   centroids = $state<FeatureCollection | null>(null)
   loadError = $state(false)
-  filter = $state<CandidateFilter>({ minComposite: 0, confidences: [...ALL_CONFIDENCES] })
+  filter = $state<CandidateFilter>({ minComposite: 0 })
   selectedId = $state<string | null>(null)
-  sort = $state<SortMode>('score')
-  userLocation = $state<[number, number] | null>(null)
   layers = $state<LayerSettings>({ candidatesVisible: true, candidateOpacity: 0.7, basemapId: DEFAULT_BASEMAP })
   /** Spot id from a shared URL, resolved once map + data are both ready. */
   pendingKohde = $state<string | null>(null)
-  /** Last camera reported by the map (moveend) — the page mirrors it to the URL. */
+  /** Last camera reported by the map (moveend). The page mirrors it to the URL. */
   camera = $state<CameraState | null>(null)
 
   #map: MapController | null = null
@@ -47,7 +44,7 @@ export class MapPageState {
     this.geojson ? this.geojson.features.map((f) => f.properties as unknown as CandidateProps) : []
   )
 
-  /** Feature id → [lng, lat] bbox-centre, for distance sorting. */
+  /** Feature id → [lng, lat] bbox-centre (spot coordinates for the tap card). */
   #centers = $derived.by(() => {
     const centers = new Map<string, [number, number]>()
     for (const f of this.geojson?.features ?? []) {
@@ -58,25 +55,9 @@ export class MapPageState {
     return centers
   })
 
-  ranked = $derived.by(() => {
-    const { minComposite, confidences } = this.filter
-    const matching = this.features.filter((f) => f.composite >= minComposite && confidences.includes(f.confidence))
-    const location = this.userLocation
-    if (this.sort === 'size') {
-      return matching.toSorted((a, b) => (b.areaHa ?? -1) - (a.areaHa ?? -1))
-    }
-    if (this.sort === 'distance' && location) {
-      return matching.toSorted((a, b) => (this.distanceTo(a.id) ?? Infinity) - (this.distanceTo(b.id) ?? Infinity))
-    }
-    return matching.toSorted((a, b) => b.composite - a.composite)
-  })
-
-  /** Distance from the user to a spot in metres, when both are known. */
-  distanceTo(id: string): number | null {
-    const location = this.userLocation
-    if (!location) return null
-    const center = this.#centers.get(id)
-    return center ? haversineM(location, center) : null
+  /** [lng, lat] centre of a spot, when its geometry is loaded. */
+  centerOf(id: string): [number, number] | null {
+    return this.#centers.get(id) ?? null
   }
 
   select(id: string | null) {
@@ -122,7 +103,7 @@ export class MapPageState {
         .then((data) => {
           if (token === this.#loadToken) this.centroids = data as FeatureCollection
         })
-        // Heat layer is an enhancement — polygons still render without it.
+        // Heat layer is an enhancement; polygons still render without it.
         .catch(() => {})
     }
   }

@@ -144,9 +144,5 @@ export function candidateLayers(opts: CandidatePaintOptions): LayerSpecification
 }
 
 export function filterExpression(filter: CandidateFilter): FilterSpecification {
-  return [
-    'all',
-    ['>=', ['get', 'composite'], filter.minComposite],
-    ['in', ['get', 'confidence'], ['literal', filter.confidences]]
-  ] as unknown as FilterSpecification
+  return ['>=', ['get', 'composite'], filter.minComposite] as unknown as FilterSpecification
 }

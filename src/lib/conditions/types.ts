@@ -25,5 +25,5 @@ export function conditionsSummary(c: Conditions): ConditionsSummary | null {
   if (c.rainSumMm === null) return null
   if (c.rainSumMm >= 25) return { label: 'Hyvä sienikeli', tone: 'good' }
   if (c.rainSumMm >= 10) return { label: 'Kohtalainen sienikeli', tone: 'ok' }
-  return { label: 'Kuivaa — heikko sienikeli', tone: 'poor' }
+  return { label: 'Kuivaa, heikko sienikeli', tone: 'poor' }
 }

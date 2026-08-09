@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { COPY } from '$lib/copy'
+  import { COPY, scoreIndex } from '$lib/copy'
 
   let { ramp }: { ramp: Array<[number, string]> } = $props()
 
@@ -10,11 +10,11 @@
   const hi = $derived(ramp.at(-1)?.[0] ?? 1)
 </script>
 
-<div class="flex flex-col gap-1 px-3 py-3">
-  <span class="text-xs text-gray-600">{COPY.potential}</span>
-  <div class="h-2.5 w-full rounded" style:background={gradient}></div>
+<div class="flex w-36 flex-col gap-1 rounded-lg bg-white/95 px-2.5 py-1.5 shadow">
+  <span class="text-[11px] text-gray-600">{COPY.potential}</span>
+  <div class="h-2 w-full rounded" style:background={gradient}></div>
   <div class="flex justify-between font-mono text-[10px] text-gray-400 tabular-nums">
-    <span>{Math.round(lo * 100)} %</span>
-    <span>{Math.round(hi * 100)} %+</span>
+    <span>{scoreIndex(lo)}</span>
+    <span>{scoreIndex(hi)}+</span>
   </div>
 </div>

@@ -145,9 +145,6 @@
         showUserLocation: true
       })
       m.addControl(geolocate, 'top-right')
-      geolocate.on('geolocate', (e) => {
-        mapState.userLocation = [e.coords.longitude, e.coords.latitude]
-      })
       m.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
 
       m.on('load', () => {
@@ -203,7 +200,6 @@
   // Filter changes are cheap setFilter calls — never re-parse the FeatureCollection.
   $effect(() => {
     void mapState.filter.minComposite
-    void mapState.filter.confidences
     if (!ready || !map) return
     applyFilter()
   })

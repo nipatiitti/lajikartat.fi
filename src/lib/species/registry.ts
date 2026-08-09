@@ -57,7 +57,7 @@ export const SPECIES_RENDER: Record<string, SpeciesRenderConfig> = {
       'Potentiaali suosii vaikeapääsyisiä, eristyneitä ja kirkasvetisiä lampia.',
     howToRead:
       'Lammet värittyvät potentiaalin mukaan: punainen on lupaavin. Arvio perustuu avoimeen ' +
-      'paikkatietoon — syrjäisyyteen, puroyhteyksiin, valuma-alueen maaperään ja lammen kokoon. ' +
+      'paikkatietoon (syrjäisyys, puroyhteydet, valuma-alueen maaperä ja lammen koko). ' +
       'Se ei takaa kalaa, vaan kertoo mistä kannattaa aloittaa.',
     geometryUrl: '/geometry/ahven',
     render: 'polygon',
@@ -74,7 +74,7 @@ export const SPECIES_RENDER: Record<string, SpeciesRenderConfig> = {
       'Valoisia sekametsiä, polunvarsia ja kangasmaita, joissa kantarellin löytymisen ' + 'edellytykset ovat parhaat.',
     howToRead:
       'Kaukaa kartta näyttää lämpökarttana, minne lupaavimmat metsiköt keskittyvät. Lähennä, ' +
-      'niin yksittäiset metsiköt piirtyvät esiin — napauttamalla näet perustelut ja varmuuden.',
+      'niin yksittäiset metsiköt piirtyvät esiin. Napauttamalla näet perustelut ja varmuuden.',
     geometryUrl: '/geometry/kantarelli',
     centroidsUrl: '/geometry/kantarelli?kind=centroids',
     render: 'heatmap',
@@ -88,10 +88,10 @@ export const SPECIES_RENDER: Record<string, SpeciesRenderConfig> = {
     label: 'Suppilovahvero',
     regionLabel: 'Pirkkala',
     copy: { singular: 'metsikkö', plural: 'metsiköt', partitive: 'metsikköä' },
-    description: 'Varjoisia, sammaleisia kuusikoita ja ojanvarsia — suppilovahveron syksyisiä kasvupaikkoja.',
+    description: 'Varjoisia, sammaleisia kuusikoita ja ojanvarsia, suppilovahveron syksyisiä kasvupaikkoja.',
     howToRead:
       'Kaukaa kartta näyttää lämpökarttana, minne lupaavimmat metsiköt keskittyvät. Lähennä, ' +
-      'niin yksittäiset metsiköt piirtyvät esiin — napauttamalla näet perustelut ja varmuuden.',
+      'niin yksittäiset metsiköt piirtyvät esiin. Napauttamalla näet perustelut ja varmuuden.',
     geometryUrl: '/geometry/suppilovahvero',
     centroidsUrl: '/geometry/suppilovahvero?kind=centroids',
     render: 'heatmap',
