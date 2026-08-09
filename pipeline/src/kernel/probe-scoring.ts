@@ -1,20 +1,19 @@
 import { centroid } from '@turf/turf'
 import { SPECIES } from '../species/registry'
-import { acquireLayers } from './acquire'
+import { acquireLayers, isLayerAvailable } from './acquire'
 import { REGIONS, skirtTileRefs, tileGrid, tileIndexOf, TILE_SIZE_M } from './config'
 import { loadPipelineEnv } from './env'
 import { reprojectPoint4326to3067 } from './reproject'
 import { buildRegionMask } from './sources/boundary'
 import { createMmlClient } from './sources/mml'
-import { WFS_ENDPOINTS } from './sources/wfs'
 import { TileContextProvider } from './tile-context'
-import type { JoinContext, LayerSpec } from './types'
+import type { JoinContext } from './types'
 
 // Profiles scoring of the FIRST valid candidate using cached tile data (no heavy
 // downloads — only the one /collections lookup hits the network). Run:
 //   pnpm --filter @lajikartat/pipeline probe:score [species] [region]
 
-const [speciesId = 'perch', regionId = 'pirkanmaa'] = process.argv.slice(2)
+const [speciesId = 'ahven', regionId = 'pirkanmaa'] = process.argv.slice(2)
 
 const species = SPECIES[speciesId]
 if (!species || species.kind !== 'feature') {
@@ -50,29 +49,31 @@ step('acquire candidate layer (from cache)')
 const candidates = species.extractCandidates(candidateBundle, buildRegionMask(regionId, region.bbox3067))
 step(`extract candidates (${candidates.length})`)
 
-const pond = candidates[0]
-if (!pond) {
+const candidate = candidates[0]
+if (!candidate) {
   console.error('no valid candidates found in cache — run `pnpm ingest` first')
   process.exit(1)
 }
-console.log(`\nFirst valid pond: ${pond.id}  "${pond.name ?? '(unnamed)'}"  ${pond.areaHa.toFixed(2)} ha\n`)
+console.log(
+  `\nFirst valid candidate: ${candidate.id}  "${candidate.name ?? '(unnamed)'}"  ${candidate.areaHa?.toFixed(2) ?? '—'} ha\n`
+)
 
-// 2. Build the context (a tile + 1-cell skirt) for that pond, from cache.
-const [lng, lat] = centroid(pond.geometry).geometry.coordinates
+// 2. Build the context (a tile + 1-cell skirt) for that candidate, from cache.
+const [lng, lat] = centroid(candidate.geometry).geometry.coordinates
 const [x, y] = reprojectPoint4326to3067([lng, lat])
 const { ix, iy } = tileIndexOf(x, y, region.bbox3067, TILE_SIZE_M)
-const available = species.layers.filter((l) => l.key !== species.candidateLayerKey).filter(isAvailable)
+const available = species.layers.filter((l) => l.key !== species.candidateLayerKey).filter(isLayerAvailable)
 const provider = new TileContextProvider(available, mml)
 
 last = performance.now()
 const baseCtx = await provider.contextFor(skirtTileRefs(ix, iy, region.bbox3067, TILE_SIZE_M, 1))
 step('build context (fetch cache + reproject + index)')
 
-// 3. Score the pond, timing each spatial primitive it calls.
+// 3. Score the candidate, timing each spatial primitive it calls.
 const timings = new Map<string, { ms: number; calls: number }>()
 last = performance.now()
-const scored = species.score(pond, instrument(baseCtx, timings))
-step('score pond (total)')
+const scored = species.score(candidate, instrument(baseCtx, timings))
+step('score candidate (total)')
 
 console.log('\nPer-primitive (inside score):')
 for (const [name, t] of timings) {
@@ -84,12 +85,6 @@ console.log(`  composite ${scored.composite.toFixed(3)}   confidence ${scored.co
 console.log(`  factors   ${JSON.stringify(scored.factors)}`)
 console.log(`  +  ${scored.why.topPositives.join('; ') || '(none)'}`)
 console.log(`  -  ${scored.why.topNegatives.join('; ') || '(none)'}`)
-
-function isAvailable(layer: LayerSpec): boolean {
-  if (layer.source === 'mml') return true
-  const endpoint = layer.params?.endpoint ?? WFS_ENDPOINTS[layer.source]
-  return Boolean(endpoint && layer.params?.typeName)
-}
 
 /** Wrap a JoinContext so each primitive's elapsed time and call count are recorded. */
 function instrument(base: JoinContext, timings: Map<string, { ms: number; calls: number }>): JoinContext {
@@ -110,6 +105,7 @@ function instrument(base: JoinContext, timings: Map<string, { ms: number; calls:
     featuresWithin: time('featuresWithin', base.featuresWithin.bind(base)),
     linesIntersecting: time('linesIntersecting', base.linesIntersecting.bind(base)),
     containingPolygon: time('containingPolygon', base.containingPolygon.bind(base)),
-    areaFractionByClass: time('areaFractionByClass', base.areaFractionByClass.bind(base))
+    areaFractionByClass: time('areaFractionByClass', base.areaFractionByClass.bind(base)),
+    classFractionAlongLine: time('classFractionAlongLine', base.classFractionAlongLine.bind(base))
   }
 }

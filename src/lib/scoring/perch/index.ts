@@ -16,7 +16,9 @@ export function scorePerch(input: PerchInput): CompositeResult {
       { id: 'F3', label: PERCH_FACTOR_LABELS.F3, weight: PERCH_WEIGHTS.F3, result: f3WaterColour(input) },
       { id: 'F5', label: PERCH_FACTOR_LABELS.F5, weight: PERCH_WEIGHTS.F5, result: f5Morphometry(input) }
     ],
-    { notes: ['F7: verify fish community on site', 'Big-perch stocks are fragile — release the largest fish'] }
+    {
+      notes: ['Varmista kalasto paikan päällä', 'Isojen ahventen kannat ovat herkkiä — vapauta suurimmat kalat']
+    }
   )
 }
 

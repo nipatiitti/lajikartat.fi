@@ -16,6 +16,7 @@ export interface ScoredEntry {
 export interface LoadResult {
   sqlPath: string
   geojsonPath: string
+  centroidsPath: string | null
   count: number
 }
 
@@ -23,15 +24,25 @@ export interface LoadResult {
  * Local-first loader: emits an idempotent SQL file (load into local D1 with
  * `wrangler d1 execute DB --local --file=…`) plus a GeoJSON render artifact.
  * The same shape swaps to D1-REST + R2 for remote without touching scoring.
+ * With `publishCentroids` a second, much smaller Point GeoJSON (same props) is
+ * emitted for heatmap rendering — it stays serveable at national scale even
+ * when the polygon blob eventually moves to bbox-scoped delivery.
  */
-export async function loadFeatureDataset(species: string, region: string, entries: ScoredEntry[]): Promise<LoadResult> {
+export async function loadFeatureDataset(
+  species: string,
+  region: string,
+  entries: ScoredEntry[],
+  options: { publishCentroids?: boolean } = {}
+): Promise<LoadResult> {
   await mkdir(OUT_DIR, { recursive: true })
   const now = Math.floor(Date.now() / 1000)
   const r2Key = `${species}/${region}/${PIPELINE_VERSION}.geojson`
+  const centroidsR2Key = `${species}/${region}/${PIPELINE_VERSION}.centroids.geojson`
 
   // No explicit BEGIN/COMMIT — D1's `execute --file` runs the statements itself.
   const sql: string[] = [...resetStatements(species, region)]
   const features: Feature[] = []
+  const centroidFeatures: Feature[] = []
 
   for (const { candidate, score } of entries) {
     const id = `${species}:${candidate.id}`
@@ -75,6 +86,14 @@ export async function loadFeatureDataset(species: string, region: string, entrie
         ');'
     )
     features.push(renderFeature(id, candidate, score))
+    if (options.publishCentroids) {
+      centroidFeatures.push({
+        type: 'Feature',
+        id,
+        properties: renderProps(id, candidate, score),
+        geometry: { type: 'Point', coordinates: [cLng, cLat] }
+      })
+    }
   }
 
   sql.push(
@@ -82,13 +101,27 @@ export async function loadFeatureDataset(species: string, region: string, entrie
       [str(species), str(region), str(PIPELINE_VERSION), str('feature'), str(r2Key), num(now)].join(', ') +
       ');'
   )
+  if (options.publishCentroids) {
+    sql.push(
+      `INSERT INTO species_dataset (species, region, pipeline_version, kind, r2_key, published_at) VALUES (` +
+        [str(species), str(region), str(PIPELINE_VERSION), str('centroids'), str(centroidsR2Key), num(now)].join(', ') +
+        ');'
+    )
+  }
 
   const geojson: FeatureCollection = { type: 'FeatureCollection', features }
   const sqlPath = join(OUT_DIR, `${species}-${region}.sql`)
   const geojsonPath = join(OUT_DIR, `${species}-${region}.geojson`)
   await writeFile(sqlPath, sql.join('\n'))
   await writeFile(geojsonPath, JSON.stringify(geojson))
-  return { sqlPath, geojsonPath, count: entries.length }
+
+  let centroidsPath: string | null = null
+  if (options.publishCentroids) {
+    centroidsPath = join(OUT_DIR, `${species}-${region}.centroids.geojson`)
+    const centroidFc: FeatureCollection = { type: 'FeatureCollection', features: centroidFeatures }
+    await writeFile(centroidsPath, JSON.stringify(centroidFc))
+  }
+  return { sqlPath, geojsonPath, centroidsPath, count: entries.length }
 }
 
 function resetStatements(species: string, region: string): string[] {
@@ -104,17 +137,22 @@ function resetStatements(species: string, region: string): string[] {
 // Species-agnostic render properties: the map colours/filters/ranks straight off
 // composite + confidence. Per-factor detail is read from D1 on click (it lives in
 // candidate_score.factors), so the geometry blob carries no factor keys.
+function renderProps(id: string, candidate: CandidateFeature, score: ScoredCandidate) {
+  return {
+    id,
+    name: candidate.name,
+    composite: round(score.composite),
+    confidence: score.confidence,
+    areaHa: candidate.areaHa === null ? null : Math.round(candidate.areaHa * 10) / 10
+  }
+}
+
 function renderFeature(id: string, candidate: CandidateFeature, score: ScoredCandidate): Feature {
   const simplified = simplify(candidate.geometry, { tolerance: 0.0001, highQuality: false, mutate: false })
   return {
     type: 'Feature',
     id,
-    properties: {
-      id,
-      name: candidate.name,
-      composite: round(score.composite),
-      confidence: score.confidence
-    },
+    properties: renderProps(id, candidate, score),
     geometry: simplified.geometry
   }
 }

@@ -11,11 +11,7 @@ const BUFFERING_BONUS = { high: 0.15, med: 0.05, low: -0.05 } as const
  * negative), and bedrock buffering capacity. (§S3)
  */
 export function s3Acidity(input: TroutInput): FactorResult {
-  if (
-    input.catchmentPeatFraction === null &&
-    input.acidSulfatePresent === null &&
-    input.bedrockBuffering === null
-  ) {
+  if (input.catchmentPeatFraction === null && input.acidSulfatePresent === null && input.bedrockBuffering === null) {
     return { subScore: null, confidence: 'low', drivers: [] }
   }
 

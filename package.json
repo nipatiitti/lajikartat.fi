@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "data:publish:local": "wrangler r2 object put lajikartat-geometry/perch/pirkanmaa/v1.geojson --file=pipeline/out/perch-pirkanmaa.geojson --local"
+    "data:publish:local": "wrangler r2 object put lajikartat-geometry/ahven/pirkanmaa/v1.geojson --file=pipeline/out/ahven-pirkanmaa.geojson --local",
+    "data:publish:local:chanterelle": "wrangler r2 object put lajikartat-geometry/kantarelli/pirkkala/v1.geojson --file=pipeline/out/kantarelli-pirkkala.geojson --local && wrangler r2 object put lajikartat-geometry/kantarelli/pirkkala/v1.centroids.geojson --file=pipeline/out/kantarelli-pirkkala.centroids.geojson --local && wrangler r2 object put lajikartat-geometry/suppilovahvero/pirkkala/v1.geojson --file=pipeline/out/suppilovahvero-pirkkala.geojson --local && wrangler r2 object put lajikartat-geometry/suppilovahvero/pirkkala/v1.centroids.geojson --file=pipeline/out/suppilovahvero-pirkkala.centroids.geojson --local"
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "next",

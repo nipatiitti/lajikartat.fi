@@ -12,7 +12,9 @@ const SOIL_CLASS_FIELD = 'PINTAMAALAJI'
 export function scorePerchCandidate(candidate: CandidateFeature, ctx: JoinContext): ScoredCandidate {
   // Coarsen the shoreline once for distance/intersection work — F1/F2 don't need
   // every vertex, and a detailed 39 ha pond is otherwise O(thousands) per call.
-  const pond = simplify(candidate.geometry, { tolerance: 0.0002, highQuality: false, mutate: false })
+  const pond = simplify(candidate.geometry, { tolerance: 0.0002, highQuality: false, mutate: false }) as Feature<
+    Polygon | MultiPolygon
+  >
   const center = centroid(pond)
 
   // F1 — roads present but none within range ⇒ very remote (cap), not "no data".

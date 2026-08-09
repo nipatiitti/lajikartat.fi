@@ -3,6 +3,7 @@ import { getRequestEvent, query } from '$app/server'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import { candidate, candidateScore } from '$lib/server/db/schema'
+import { getEnv } from '$lib/server/env'
 import type { Confidence, WhyBreakdown } from '$lib/scoring/core/types'
 
 // NOTE: remote files must NOT live under src/lib/server — they expose a generated
@@ -21,16 +22,16 @@ export interface CandidateDetail {
   why: WhyBreakdown
 }
 
-// The map renders bulk geometry (composite/confidence/f*) straight from R2; this
-// pulls the richer per-pond breakdown (drivers, positives/negatives, notes) that the
-// geojson omits, on demand when a pond is clicked.
+// The map renders bulk geometry (composite/confidence) straight from R2; this pulls
+// the richer per-candidate breakdown (drivers, positives/negatives, notes) that the
+// geojson omits, on demand when a candidate is clicked.
 export const getCandidateDetail = query(
   'unchecked',
   async ({ species, id }: { species: string; id: string }): Promise<CandidateDetail> => {
     const { platform } = getRequestEvent()
     if (!platform) throw error(500, 'platform bindings unavailable')
 
-    const db = getDb(platform.env.DB)
+    const db = getDb(getEnv(platform).DB)
     const [row] = await db
       .select({
         id: candidate.id,

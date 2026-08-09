@@ -1,5 +1,6 @@
+import { bbox } from '@turf/turf'
 import { describe, expect, it } from 'vitest'
-import { reprojectFeature3067to4326 } from '../src/kernel/reproject'
+import { reprojectCollection3067to4326, reprojectFeature3067to4326 } from '../src/kernel/reproject'
 
 describe('reproject EPSG:3067 → 4326', () => {
   it('places a known TM35FIN point at the right WGS84 lng/lat', () => {
@@ -38,5 +39,42 @@ describe('reproject EPSG:3067 → 4326', () => {
       expect(lat).toBeGreaterThan(61)
       expect(lat).toBeLessThan(62)
     }
+  })
+
+  it('strips stale source-CRS bbox members (turf 7 trusts them without recomputing)', () => {
+    // Metsäkeskus GeoServer attaches per-feature 3067 bbox members; keeping them
+    // poisons every turf.bbox()-seeded primitive after reprojection.
+    const fc = reprojectCollection3067to4326({
+      type: 'FeatureCollection',
+      bbox: [320000, 6811000, 327000, 6819000],
+      features: [
+        {
+          type: 'Feature',
+          bbox: [320000, 6811000, 321000, 6812000],
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            bbox: [320000, 6811000, 321000, 6812000],
+            coordinates: [
+              [
+                [320000, 6811000],
+                [321000, 6811000],
+                [321000, 6812000],
+                [320000, 6811000]
+              ]
+            ]
+          }
+        }
+      ]
+    })
+    expect(fc.bbox).toBeUndefined()
+    expect(fc.features[0].bbox).toBeUndefined()
+    expect(fc.features[0].geometry.bbox).toBeUndefined()
+    // turf.bbox must now compute real 4326 degrees, not echo stale meters.
+    const [minLng, minLat, maxLng, maxLat] = bbox(fc.features[0])
+    expect(minLng).toBeGreaterThan(22)
+    expect(maxLng).toBeLessThan(25)
+    expect(minLat).toBeGreaterThan(61)
+    expect(maxLat).toBeLessThan(62)
   })
 })

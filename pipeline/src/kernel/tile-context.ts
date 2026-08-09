@@ -1,5 +1,6 @@
 import type { Feature, FeatureCollection } from 'geojson'
 import pLimit from 'p-limit'
+import { filterLayerFeatures } from './acquire'
 import type { TileRef } from './config'
 import { reprojectCollection3067to4326 } from './reproject'
 import type { MmlClient } from './sources/mml'
@@ -15,7 +16,9 @@ export async function rawLayerTile(layer: LayerSpec, ref: TileRef, mml: MmlClien
   try {
     if (layer.source === 'mml') {
       const collection = await mml.resolveCollection(layer.resolve)
-      return await mml.fetchBbox(collection, ref.bbox, { tileId: `${ref.ix}_${ref.iy}` })
+      // Cache key MUST be the bbox, not ix/iy — tile indices are region-relative,
+      // so two regions' (0,0) tiles would otherwise share one cache entry.
+      return await mml.fetchBbox(collection, ref.bbox, { tileId: ref.bbox.join('_') })
     }
     const endpoint = layer.params?.endpoint ?? WFS_ENDPOINTS[layer.source]
     const typeName = layer.params?.typeName
@@ -95,7 +98,9 @@ export class TileContextProvider {
     const raw = await rawLayerTile(layer, ref, this.mml)
     if (!raw) return null
 
-    const projected = reprojectCollection3067to4326(raw)
+    // Filter AFTER the (shared) raw fetch, BEFORE the per-layer-key LRU entry:
+    // sibling keys over the same collection reuse the download, not the filter.
+    const projected = reprojectCollection3067to4326(filterLayerFeatures(layer, raw))
     this.cache.set(key, projected)
     if (this.cache.size > this.maxEntries) {
       const oldest = this.cache.keys().next().value

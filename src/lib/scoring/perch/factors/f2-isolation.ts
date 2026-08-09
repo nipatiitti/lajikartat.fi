@@ -16,13 +16,13 @@ export function f2Isolation(input: PerchInput): FactorResult {
 
   if (n <= 0) {
     sub = 1
-    drivers.push('closed basin (no stream connections)')
+    drivers.push('umpinainen allas (ei puroyhteyksiä)')
   } else if (n === 1) {
     sub = input.isHeadwater ? 0.8 : 0.65
-    drivers.push(input.isHeadwater ? 'headwater (single outflow, no upstream lake)' : 'single stream connection')
+    drivers.push(input.isHeadwater ? 'latvavesi (vain lasku-uoma, ei yläpuolista järveä)' : 'yksi puroyhteys')
   } else {
     sub = clamp(0.5 - 0.1 * (n - 2))
-    drivers.push(`through-flow (${n} stream connections)`)
+    drivers.push(`läpivirtaus (${n} puroyhteyttä)`)
   }
 
   return { subScore: clamp(sub), confidence: 'med', drivers }

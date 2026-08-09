@@ -8,3 +8,7 @@ bun.lockb
 # Miscellaneous
 /static/
 /drizzle/
+
+# Pipeline artifacts & caches (multi-MB generated JSON)
+/pipeline/out/
+/pipeline/.cache/

@@ -1,4 +1,5 @@
-import type { CompositeResult, Confidence, WeightedFactor, WhyBreakdown, WhyFactor } from './types'
+import type { CompositeResult, Confidence, WeightedFactor, WhyFactor } from './types'
+import { buildWhyBreakdown } from './why'
 
 const ORDER: readonly Confidence[] = ['low', 'med', 'high']
 const rank = (c: Confidence): number => ORDER.indexOf(c)
@@ -45,7 +46,7 @@ function overallConfidence(factors: WeightedFactor[], threshold: number): Confid
   return ORDER[r]
 }
 
-function buildWhy(factors: WeightedFactor[], weightSum: number, notes: string[]): WhyBreakdown {
+function buildWhy(factors: WeightedFactor[], weightSum: number, notes: string[]) {
   const whyFactors: WhyFactor[] = factors.map((f) => ({
     id: f.id,
     label: f.label ?? f.id,
@@ -54,19 +55,5 @@ function buildWhy(factors: WeightedFactor[], weightSum: number, notes: string[])
     confidence: f.result.confidence,
     drivers: f.result.drivers ?? []
   }))
-
-  const available = whyFactors.filter((f) => f.subScore !== null)
-  const positives = available
-    .filter((f) => (f.subScore as number) >= 0.6)
-    .sort((a, b) => (b.subScore as number) - (a.subScore as number))
-  const negatives = available
-    .filter((f) => (f.subScore as number) <= 0.4)
-    .sort((a, b) => (a.subScore as number) - (b.subScore as number))
-
-  return {
-    factors: whyFactors,
-    topPositives: positives.slice(0, 2).flatMap((f) => f.drivers),
-    topNegatives: negatives.slice(0, 2).flatMap((f) => f.drivers),
-    notes
-  }
+  return buildWhyBreakdown(whyFactors, notes)
 }

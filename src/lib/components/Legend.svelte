@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { COPY } from '$lib/copy'
+
   let { ramp }: { ramp: Array<[number, string]> } = $props()
 
   const gradient = $derived(
@@ -9,10 +11,10 @@
 </script>
 
 <div class="flex flex-col gap-1 px-3 py-3">
-  <span class="text-xs text-gray-600">Composite score</span>
+  <span class="text-xs text-gray-600">{COPY.potential}</span>
   <div class="h-2.5 w-full rounded" style:background={gradient}></div>
   <div class="flex justify-between font-mono text-[10px] text-gray-400 tabular-nums">
-    <span>{lo.toFixed(2)}</span>
-    <span>{hi.toFixed(2)}+</span>
+    <span>{Math.round(lo * 100)} %</span>
+    <span>{Math.round(hi * 100)} %+</span>
   </div>
 </div>

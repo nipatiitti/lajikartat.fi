@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit'
+import { getEnv } from '$lib/server/env'
 import type { RequestHandler } from './$types'
 
 // MML's open vector-tile service (taustakartta, MVT 2.1, EPSG:3857 — MapLibre-native)
@@ -10,7 +11,7 @@ const MML_HOST = 'https://avoin-karttakuva.maanmittauslaitos.fi'
 export const GET: RequestHandler = async ({ params, url, platform, request }) => {
   if (!platform) throw error(500, 'platform bindings unavailable')
 
-  const apiKey = platform.env.MML_API_KEY
+  const apiKey = getEnv(platform).MML_API_KEY
   // No key → 204 so the map degrades to a blank style; the perch polygons still render.
   if (!apiKey) return new Response(null, { status: 204 })
 

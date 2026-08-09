@@ -23,20 +23,29 @@ type Coords = Position | Coords[]
 const mapCoords = (coords: Coords): Coords =>
   typeof coords[0] === 'number' ? to4326(coords as Position) : (coords as Coords[]).map(mapCoords)
 
+// Some services (Metsäkeskus GeoServer) attach a per-feature/collection `bbox`
+// member in the source CRS. After reprojection it is stale — and turf 7's
+// bbox() RETURNS an existing member instead of recomputing, which silently
+// poisons every bbox-seeded spatial primitive. Strip it at every level.
+const dropBbox = <T extends { bbox?: unknown }>(o: T): Omit<T, 'bbox'> => {
+  const { bbox: _stale, ...rest } = o
+  return rest
+}
+
 export function reprojectGeometry3067to4326(geom: Geometry): Geometry {
   if (geom.type === 'GeometryCollection') {
     const gc = geom as GeometryCollection
-    return { ...gc, geometries: gc.geometries.map(reprojectGeometry3067to4326) }
+    return { ...dropBbox(gc), geometries: gc.geometries.map(reprojectGeometry3067to4326) }
   }
   const g = geom as Exclude<Geometry, GeometryCollection>
-  return { ...g, coordinates: mapCoords(g.coordinates as Coords) } as Geometry
+  return { ...dropBbox(g), coordinates: mapCoords(g.coordinates as Coords) } as Geometry
 }
 
 export function reprojectFeature3067to4326(feature: Feature): Feature {
   if (!feature.geometry) return feature
-  return { ...feature, geometry: reprojectGeometry3067to4326(feature.geometry) }
+  return { ...dropBbox(feature), geometry: reprojectGeometry3067to4326(feature.geometry) }
 }
 
 export function reprojectCollection3067to4326(fc: FeatureCollection): FeatureCollection {
-  return { ...fc, features: fc.features.map(reprojectFeature3067to4326) }
+  return { ...dropBbox(fc), features: fc.features.map(reprojectFeature3067to4326) }
 }

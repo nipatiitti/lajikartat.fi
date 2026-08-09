@@ -13,9 +13,11 @@ export function s5Flow(input: TroutInput): FactorResult {
 
   const a = input.upstreamAreaKm2
   let sub: number
-  if (a < 0.3) sub = 0.2 // tiny headwater — may dry / freeze solid
+  if (a < 0.3)
+    sub = 0.2 // tiny headwater — may dry / freeze solid
   else if (a < 1) sub = 0.55
-  else if (a <= 50) sub = 0.85 // perennial brook sweet spot
+  else if (a <= 50)
+    sub = 0.85 // perennial brook sweet spot
   else if (a <= 200) sub = 0.6
   else sub = 0.4 // large river — off-archetype for resident brook trout
 

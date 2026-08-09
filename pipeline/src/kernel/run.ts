@@ -1,15 +1,15 @@
 import { centroid } from '@turf/turf'
 import { SPECIES } from '../species/registry'
-import { acquireLayers } from './acquire'
+import { acquireLayers, isLayerAvailable } from './acquire'
 import { REGIONS, skirtTileRefs, tileGrid, tileIndexOf, TILE_SIZE_M, type TileRef } from './config'
 import { loadPipelineEnv } from './env'
 import { loadFeatureDataset, type ScoredEntry } from './load'
+import { applyNameJoin } from './name-join'
 import { reprojectPoint4326to3067 } from './reproject'
 import { buildRegionMask } from './sources/boundary'
 import { createMmlClient } from './sources/mml'
-import { WFS_ENDPOINTS } from './sources/wfs'
 import { TileContextProvider, warmTiles } from './tile-context'
-import type { CandidateFeature, LayerSpec } from './types'
+import type { CandidateFeature } from './types'
 
 const [speciesId, regionId] = process.argv.slice(2)
 if (!speciesId || !regionId) {
@@ -53,7 +53,7 @@ const candidates = species.extractCandidates(candidateBundle, mask)
 console.log(`${candidates.length} candidate ${speciesId} features`)
 
 // Only layers we can actually fetch contribute; the rest leave their factor null.
-const available = contextLayers.filter(isAvailable)
+const available = contextLayers.filter(isLayerAvailable)
 for (const l of contextLayers) {
   if (!available.includes(l)) console.warn(`  ⚠ ${l.key} (${l.source}) not configured — its factor will be null`)
 }
@@ -93,7 +93,7 @@ await warmTiles(available, [...uniqueRefs.values()], mml, 5, (n, total) => {
 process.stdout.write('\n')
 
 // Phase 2b — score tile-by-tile with bounded context (now mostly cache hits).
-console.log(`Phase 2b: scoring ${candidates.length} ponds across ${sorted.length} tiles…`)
+console.log(`Phase 2b: scoring ${candidates.length} candidates across ${sorted.length} tiles…`)
 const provider = new TileContextProvider(available, mml)
 const entries: ScoredEntry[] = []
 const scoreStart = Date.now()
@@ -108,13 +108,30 @@ for (const group of sorted) {
 }
 process.stdout.write('\n')
 
-const { sqlPath, geojsonPath, count } = await loadFeatureDataset(speciesId, regionId, entries)
+// Publish gate — bound what reaches D1/R2 for high-volume species.
+let published = entries
+if (species.publish) {
+  const { minComposite = 0, maxFeatures = Infinity } = species.publish
+  published = entries
+    .filter((e) => e.score.composite >= minComposite)
+    .sort((a, b) => b.score.composite - a.score.composite)
+    .slice(0, maxFeatures === Infinity ? undefined : maxFeatures)
+  console.log(
+    `Publish gate: ${published.length}/${entries.length} candidates (min ${minComposite}, cap ${maxFeatures})`
+  )
+}
+
+// Phase 2c — name published candidates from the nearest MML place name.
+if (species.nameJoin) {
+  console.log(`Phase 2c: naming from paikannimi (≤ ${species.nameJoin.maxDistanceM} m)…`)
+  const named = await applyNameJoin(published, species.nameJoin, region.bbox3067, mml)
+  console.log(`  named ${named}/${published.length} candidates`)
+}
+
+const { sqlPath, geojsonPath, centroidsPath, count } = await loadFeatureDataset(speciesId, regionId, published, {
+  publishCentroids: species.publishCentroids
+})
 console.log(`\nWrote ${count} rows → ${sqlPath}`)
 console.log(`     geometry → ${geojsonPath}`)
+if (centroidsPath) console.log(`     centroids → ${centroidsPath}`)
 console.log(`\nLoad locally:\n  pnpm exec wrangler d1 execute DB --local --file=${sqlPath}`)
-
-function isAvailable(layer: LayerSpec): boolean {
-  if (layer.source === 'mml') return true
-  const endpoint = layer.params?.endpoint ?? WFS_ENDPOINTS[layer.source]
-  return Boolean(endpoint && layer.params?.typeName)
-}

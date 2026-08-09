@@ -7,9 +7,10 @@ export const PERCH_WEIGHTS = {
   F5: 0.15
 } as const
 
+// User-facing labels (Finnish) — these bake into the D1 `why` JSON at pipeline time.
 export const PERCH_FACTOR_LABELS = {
-  F1: 'Remoteness / fishing pressure',
-  F2: 'Isolation / closed basin',
-  F3: 'Water colour (peat/esker proxy)',
-  F5: 'Morphometry (size & depth)'
+  F1: 'Syrjäisyys ja kalastuspaine',
+  F2: 'Eristyneisyys ja puroyhteydet',
+  F3: 'Veden väri (maaperäarvio)',
+  F5: 'Koko ja syvyys'
 } as const

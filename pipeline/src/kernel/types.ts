@@ -1,8 +1,17 @@
-import type { Feature, FeatureCollection, Geometry, LineString, MultiLineString, MultiPolygon, Point, Polygon } from 'geojson'
+import type {
+  Feature,
+  FeatureCollection,
+  Geometry,
+  LineString,
+  MultiLineString,
+  MultiPolygon,
+  Point,
+  Polygon
+} from 'geojson'
 import type { CompositeResult } from '@scoring'
 
 export type Confidence = 'high' | 'med' | 'low'
-export type SourceId = 'mml' | 'gtk' | 'syke' | 'corine'
+export type SourceId = 'mml' | 'gtk' | 'syke' | 'corine' | 'metsakeskus'
 export type LayerGeometry = 'polygon' | 'line' | 'point' | 'raster'
 
 /** A logical layer a species needs, decoupled from the live source schema. */
@@ -12,7 +21,15 @@ export interface LayerSpec {
   /** Candidate collection-name substrings, resolved against the live schema. */
   resolve: string[]
   geometry: LayerGeometry
-  /** Optional extra query params for the source connector. */
+  /**
+   * Optional extra query params for the source connector. Recognised beyond the
+   * raw WFS params (endpoint/typeName/outputFormat):
+   * - `tiled: 'true'` — fetch a WFS candidate layer per acquisition tile instead
+   *   of one region-wide request (needed for large layers like forest stands).
+   * - `filterField` + `filterValues` (csv) — keep only features whose property
+   *   matches, applied AFTER fetch so layer keys sharing a collection also share
+   *   the disk cache (e.g. tieviiva → tracks vs car roads by `kohdeluokka`).
+   */
   params?: Record<string, string>
 }
 
@@ -54,10 +71,7 @@ export interface JoinContext {
   ): { distanceM: number; properties: Record<string, unknown> } | null
   /** Features of any geometry within `meters` of the input feature. */
   featuresWithin(feature: Feature<Geometry>, layerKey: string, meters: number): Feature<Geometry>[]
-  linesIntersecting(
-    polygon: Feature<Polygon | MultiPolygon>,
-    layerKey: string
-  ): Feature<LineString | MultiLineString>[]
+  linesIntersecting(polygon: Feature<Polygon | MultiPolygon>, layerKey: string): Feature<LineString | MultiLineString>[]
   containingPolygon(point: Feature<Point>, layerKey: string): Feature<Polygon | MultiPolygon> | null
   areaFractionByClass(
     polygon: Feature<Polygon | MultiPolygon>,
@@ -79,7 +93,7 @@ interface SpeciesBase {
   layers: LayerSpec[]
 }
 
-/** Discrete-feature species (perch): each unit scored individually. */
+/** Discrete-feature species (perch, chanterelle stands): each unit scored individually. */
 export interface FeatureSpecies extends SpeciesBase {
   kind: 'feature'
   /** Layer key the candidates come from — acquired region-wide; other layers are
@@ -87,6 +101,16 @@ export interface FeatureSpecies extends SpeciesBase {
   candidateLayerKey: string
   extractCandidates(bundle: LayerBundle, region: RegionMask): CandidateFeature[]
   score(candidate: CandidateFeature, ctx: JoinContext): ScoredCandidate
+  /** Publish gate: bound what reaches D1/R2 regardless of candidate volume
+   * (high-volume species like forest stands stay perch-scale downstream). */
+  publish?: { minComposite?: number; maxFeatures?: number }
+  /** Also publish a Point-per-candidate GeoJSON (same props) for heatmap
+   * rendering — small enough to stay a single blob at national scale. */
+  publishCentroids?: boolean
+  /** Post-scoring enrichment: name each published candidate from the nearest
+   * MML paikannimi point within maxDistanceM (optionally filtered by
+   * kohdeluokka). Never overwrites a name the source data already provided. */
+  nameJoin?: { maxDistanceM: number; kohdeluokka?: number[] }
   render: { type: 'vector'; colorBy: string }
 }
 

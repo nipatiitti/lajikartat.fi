@@ -14,6 +14,13 @@ export const REGIONS: Record<string, RegionPreset> = {
   pirkanmaa: {
     id: 'pirkanmaa',
     bbox3067: [283000, 6780000, 385000, 6900000]
+  },
+  // Chanterelle validation region: the Pirkkala forests (user-chosen corners
+  // 61.3966,23.6470 → 61.4601,23.7492, rounded outward to whole km). ~2.7k
+  // Metsäkeskus stands — perch-scale, cheap cold run.
+  pirkkala: {
+    id: 'pirkkala',
+    bbox3067: [320000, 6811000, 327000, 6819000]
   }
 }
 

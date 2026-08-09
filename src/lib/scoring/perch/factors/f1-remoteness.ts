@@ -13,6 +13,14 @@ const ACCESS_REMOTENESS: Record<AccessType, number> = {
   none: 1.0
 }
 
+const ACCESS_LABELS: Record<AccessType, string> = {
+  paved: 'asfalttitie',
+  gravel: 'soratie',
+  gated: 'puomitettu tie',
+  trail: 'polku',
+  none: 'ei pääsyä'
+}
+
 /**
  * F1 — the strongest factor. A pond is only as unfished as its easiest entry, so
  * the sub-signals are combined with a MIN: any easy access route drags the score
@@ -26,26 +34,27 @@ export function f1Remoteness(input: PerchInput): FactorResult {
     const distScore = logSaturate(input.nearestRoadDistanceM, ROAD_DISTANCE_CAP_M)
     const accessScore = input.accessType !== null ? ACCESS_REMOTENESS[input.accessType] : distScore
     signals.push(0.6 * distScore + 0.4 * accessScore)
-    drivers.push(`nearest road ${formatDist(input.nearestRoadDistanceM)}${input.accessType ? ` (${input.accessType})` : ''}`)
+    drivers.push(
+      `lähin tie ${formatDist(input.nearestRoadDistanceM)}${input.accessType ? ` (${ACCESS_LABELS[input.accessType]})` : ''}`
+    )
   }
 
   if (input.buildingsWithin100m !== null) {
     signals.push(1 / (1 + input.buildingsWithin100m))
     drivers.push(
       input.buildingsWithin100m === 0
-        ? 'no buildings within 100 m'
-        : `${input.buildingsWithin100m} building(s) within 100 m`
+        ? 'ei rakennuksia 100 m säteellä'
+        : `${input.buildingsWithin100m} rakennusta 100 m säteellä`
     )
   }
 
   if (signals.length === 0) return { subScore: null, confidence: 'low', drivers }
 
   let sub = Math.min(...signals)
+  // Unnamed is the norm in the data — only a name is worth surfacing as a driver.
   if (input.isNamed) {
     sub *= 0.9
-    drivers.push('named water (more likely known/fished)')
-  } else {
-    drivers.push('unnamed')
+    drivers.push('nimetty vesi (todennäköisemmin tunnettu ja kalastettu)')
   }
 
   const hasBoth = input.nearestRoadDistanceM !== null && input.buildingsWithin100m !== null

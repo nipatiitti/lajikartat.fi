@@ -17,9 +17,9 @@ export function f3WaterColour(input: PerchInput): FactorResult {
 
   const sub = clamp((1 - peat) * 0.85 + esker * 0.15)
 
-  drivers.push(`catchment peatland ${(peat * 100).toFixed(0)}%`)
-  if (esker > 0.05) drivers.push(`esker/glaciofluvial ${(esker * 100).toFixed(0)}% (clearer water)`)
-  if (peat > 0.5) drivers.push('peat-dominated catchment (browning risk)')
+  drivers.push(`valuma-alueesta suota ${(peat * 100).toFixed(0)} %`)
+  if (esker > 0.05) drivers.push(`harjumaata ${(esker * 100).toFixed(0)} % (kirkkaampi vesi)`)
+  if (peat > 0.5) drivers.push('suovaltainen valuma-alue (tumma vesi)')
 
   return { subScore: sub, confidence: 'med', drivers }
 }

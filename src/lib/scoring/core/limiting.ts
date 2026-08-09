@@ -1,5 +1,6 @@
 import { clamp } from './math'
-import type { CompositeResult, Confidence, FactorResult, WhyBreakdown, WhyFactor } from './types'
+import type { CompositeResult, Confidence, FactorResult, WhyFactor } from './types'
+import { buildWhyBreakdown } from './why'
 
 const ORDER: readonly Confidence[] = ['low', 'med', 'high']
 const rank = (c: Confidence): number => ORDER.indexOf(c)
@@ -7,6 +8,12 @@ const rank = (c: Confidence): number => ORDER.indexOf(c)
 export interface LimitingFactor {
   id: string
   label?: string
+  /**
+   * Geometric-mean exponent weight (default 1 = even mean). Weights are
+   * renormalised over the AVAILABLE hard filters, so `∏ sᵢ^(wᵢ/Σw)` with all
+   * defaults reproduces the unweighted `∏ sᵢ^(1/n)` exactly.
+   */
+  weight?: number
   result: FactorResult
 }
 
@@ -18,6 +25,13 @@ export interface ModulatorFactor extends LimitingFactor {
 export interface LimitingOptions {
   /** Free-text notes carried into the why-breakdown (e.g. conservation reminders). */
   notes?: string[]
+  /**
+   * Explicit veto conditions (e.g. chanterelle clearcut/seedling stand). A veto
+   * with sub-score 0 FIRES: composite is forced to 0 and its drivers surface in
+   * the why-breakdown. Sub-score > 0 passes and contributes nothing; null means
+   * unknown and never fires (unknown ≠ bad, same rule as the hard filters).
+   */
+  vetoes?: LimitingFactor[]
 }
 
 /** Map a modulator sub-score (0→1, 0.5 neutral) onto its multiplier band. */
@@ -29,24 +43,26 @@ function multiplierFor(subScore: number, band: [number, number]): number {
 }
 
 /**
- * Geometric-mean / limiting-factor combination (trout). The HARD filters combine
- * MULTIPLICATIVELY, so any single fatal condition (sub-score ~0) vetoes the site
- * regardless of the rest; MODULATORS then nudge an already-suitable reach up or
- * down within a bounded band. Null sub-scores drop out (unknown ≠ bad) — they are
- * never treated as 0, so a missing layer can't fake a veto.
+ * Geometric-mean / limiting-factor combination (trout, chanterelle). The HARD
+ * filters combine MULTIPLICATIVELY (optionally exponent-weighted), so any single
+ * fatal condition (sub-score ~0) vetoes the site regardless of the rest;
+ * MODULATORS then nudge an already-suitable site up or down within a bounded
+ * band; explicit VETOES short-circuit the composite to 0 with the reason
+ * surfaced. Null sub-scores drop out (unknown ≠ bad) — they are never treated
+ * as 0, so a missing layer can't fake a veto.
  */
 export function combineLimiting(
   hard: LimitingFactor[],
   modulators: ModulatorFactor[] = [],
   options: LimitingOptions = {}
 ): CompositeResult {
+  const vetoes = options.vetoes ?? []
+
   const availHard = hard.filter((f) => f.result.subScore !== null)
+  const weightSum = availHard.reduce((s, f) => s + (f.weight ?? 1), 0)
   const hardScore =
-    availHard.length > 0
-      ? Math.pow(
-          availHard.reduce((p, f) => p * (f.result.subScore as number), 1),
-          1 / availHard.length
-        )
+    availHard.length > 0 && weightSum > 0
+      ? availHard.reduce((p, f) => p * Math.pow(f.result.subScore as number, (f.weight ?? 1) / weightSum), 1)
       : 0
 
   let multiplier = 1
@@ -55,12 +71,30 @@ export function combineLimiting(
     multiplier *= multiplierFor(m.result.subScore, m.band ?? [0.7, 1.3])
   }
 
-  const composite = clamp(hardScore * multiplier)
+  const vetoFired = vetoes.some((v) => v.result.subScore === 0)
+  const composite = vetoFired ? 0 : clamp(hardScore * multiplier)
   const confidence = hardConfidence(hard)
-  const why = buildWhy(hard, modulators, availHard.length, options.notes ?? [])
+
+  const toWhy = (f: LimitingFactor, weight: number): WhyFactor => ({
+    id: f.id,
+    label: f.label ?? f.id,
+    subScore: f.result.subScore,
+    weight,
+    confidence: f.result.confidence,
+    drivers: f.result.drivers ?? []
+  })
+  // Hard filters carry their renormalised exponent as an indicative weight (for
+  // the why-panel bars); modulators and vetoes are secondary and shown at 0. A
+  // fired veto (sub-score 0) lands in topNegatives via the generic ≤0.4 rule.
+  const whyFactors: WhyFactor[] = [
+    ...hard.map((f) => toWhy(f, f.result.subScore !== null && weightSum > 0 ? (f.weight ?? 1) / weightSum : 0)),
+    ...modulators.map((f) => toWhy(f, 0)),
+    ...vetoes.map((f) => toWhy(f, 0))
+  ]
+  const why = buildWhyBreakdown(whyFactors, options.notes ?? [])
 
   const factors: CompositeResult['factors'] = {}
-  for (const f of [...hard, ...modulators]) {
+  for (const f of [...hard, ...modulators, ...vetoes]) {
     factors[f.id] = { subScore: f.result.subScore, confidence: f.result.confidence }
   }
 
@@ -76,42 +110,4 @@ function hardConfidence(hard: LimitingFactor[]): Confidence {
   if (missing >= 1) r = Math.min(r, 1) // one missing hard filter caps at "med"
   if (missing >= 2) r = 0 // two or more missing → "low"
   return ORDER[r]
-}
-
-function buildWhy(
-  hard: LimitingFactor[],
-  modulators: ModulatorFactor[],
-  availHardCount: number,
-  notes: string[]
-): WhyBreakdown {
-  const toWhy = (f: LimitingFactor, weight: number): WhyFactor => ({
-    id: f.id,
-    label: f.label ?? f.id,
-    subScore: f.result.subScore,
-    weight,
-    confidence: f.result.confidence,
-    drivers: f.result.drivers ?? []
-  })
-
-  // Hard filters share an even indicative weight (for the why-panel bars);
-  // modulators are secondary and shown at weight 0.
-  const whyFactors: WhyFactor[] = [
-    ...hard.map((f) => toWhy(f, f.result.subScore !== null && availHardCount > 0 ? 1 / availHardCount : 0)),
-    ...modulators.map((f) => toWhy(f, 0))
-  ]
-
-  const available = whyFactors.filter((f) => f.subScore !== null)
-  const positives = available
-    .filter((f) => (f.subScore as number) >= 0.6)
-    .sort((a, b) => (b.subScore as number) - (a.subScore as number))
-  const negatives = available
-    .filter((f) => (f.subScore as number) <= 0.4)
-    .sort((a, b) => (a.subScore as number) - (b.subScore as number))
-
-  return {
-    factors: whyFactors,
-    topPositives: positives.slice(0, 2).flatMap((f) => f.drivers),
-    topNegatives: negatives.slice(0, 2).flatMap((f) => f.drivers),
-    notes
-  }
 }

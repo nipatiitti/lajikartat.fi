@@ -19,20 +19,20 @@ function areaBand(areaHa: number): number {
 export function f5Morphometry(input: PerchInput): FactorResult {
   if (input.areaHa === null) return { subScore: null, confidence: 'low', drivers: [] }
 
-  const drivers: string[] = [`area ${input.areaHa.toFixed(1)} ha`]
+  const drivers: string[] = [`pinta-ala ${input.areaHa.toFixed(1)} ha`]
   let sub = areaBand(input.areaHa)
-  if (sub === 0) drivers.push('outside target size band')
+  if (sub === 0) drivers.push('tavoitekoon ulkopuolella')
 
   if (input.shorelineDevelopment !== null) {
     const structure = clamp((input.shorelineDevelopment - 1) / 2)
     sub = clamp(sub * (0.85 + 0.15 * structure))
-    if (structure > 0.3) drivers.push('complex shoreline (more littoral cover)')
+    if (structure > 0.3) drivers.push('rikkonainen rantaviiva (enemmän suojapaikkoja)')
   }
 
   if (input.maxDepthM !== null) {
     const depth = clamp(input.maxDepthM / 6)
     sub = clamp(sub * (0.8 + 0.2 * depth))
-    drivers.push(`max depth ${input.maxDepthM.toFixed(1)} m`)
+    drivers.push(`maksimisyvyys ${input.maxDepthM.toFixed(1)} m`)
   }
 
   return { subScore: sub, confidence: input.maxDepthM !== null ? 'high' : 'med', drivers }

@@ -2,13 +2,8 @@
 // for information about these interfaces
 declare global {
   namespace App {
-    interface Platform {
-      env: Env
-      ctx: ExecutionContext
-      caches: CacheStorage
-      cf?: IncomingRequestCfProperties
-    }
-
+    // Platform comes from @sveltejs/adapter-cloudflare's ambient.d.ts (env is
+    // `unknown` there by design — narrow it via $lib/server/env `getEnv`).
     // interface Error {}
     // interface Locals {}
     // interface PageData {}
