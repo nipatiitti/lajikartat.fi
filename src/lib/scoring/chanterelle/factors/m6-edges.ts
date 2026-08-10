@@ -3,8 +3,12 @@ import type { FactorResult } from '../../core/types'
 import { CHANTERELLE_PARAMS } from '../params'
 import type { ChanterelleInput, ChanterelleVariant } from '../types'
 
-/** 1 at ≤ 50 m, linear → 0 at 400 m. */
-const prox = (d: number): number => (d <= 50 ? 1 : clamp((400 - d) / 350))
+/**
+ * 1 at ≤ 25 m, linear → 0 at 300 m. Managed forest is dense with tracks and
+ * ditches, so a generous decay (formerly 50→400 m) saturated this factor for
+ * nearly every stand and erased its ranking signal.
+ */
+const prox = (d: number): number => (d <= 25 ? 1 : clamp((300 - d) / 275))
 
 /**
  * M6 — edge & disturbance proximity, the top folk signal for both species:
@@ -24,30 +28,31 @@ export function m6Edges(input: ChanterelleInput, variant: ChanterelleVariant): F
   const drivers: string[] = []
 
   const trackSignal = nearestTrackM !== null ? prox(nearestTrackM) : 0
+  const hasInternalDitch = ditchesIntersectingCount !== null && ditchesIntersectingCount > 0
   const ditchSignals = [
     nearestDitchM !== null ? prox(nearestDitchM) : 0,
-    ditchesIntersectingCount !== null && ditchesIntersectingCount > 0 ? 1 : 0,
-    isDrainedPeatland === true ? 0.7 : 0
+    hasInternalDitch ? 0.9 : 0,
+    isDrainedPeatland === true ? 0.6 : 0
   ]
   const ditchSignal = Math.max(...ditchSignals)
 
   if (trackSignal > 0.6 && nearestTrackM !== null) {
     drivers.push(`metsätie tai polku ${Math.round(nearestTrackM)} m päässä, kulje sen reunoja`)
   }
-  if (ditchSignal >= 1 && ditchesIntersectingCount !== null && ditchesIntersectingCount > 0) {
+  if (hasInternalDitch) {
     drivers.push(
       ditchesIntersectingCount === 1
         ? 'oja halkoo metsikköä, tarkista penkat'
         : `${ditchesIntersectingCount} ojaa halkoo metsikköä, tarkista penkat`
     )
-  } else if (ditchSignal > 0.6 && nearestDitchM !== null && prox(nearestDitchM) === ditchSignal) {
+  } else if (nearestDitchM !== null && prox(nearestDitchM) > 0.6) {
     drivers.push(`oja ${Math.round(nearestDitchM)} m päässä`)
-  } else if (isDrainedPeatland === true && ditchSignal === 0.7) {
+  } else if (isDrainedPeatland === true) {
     drivers.push('ojitettu metsikkö (ojaverkosto sisällä)')
   }
 
   const signal = Math.max(w.track * trackSignal, w.ditch * ditchSignal)
   if (signal < 0.2) drivers.push('syvällä metsikön sisällä, kaukana reunoista ja poluista')
 
-  return { subScore: clamp(0.15 + 0.85 * signal), confidence: 'high', drivers }
+  return { subScore: clamp(0.05 + 0.95 * signal), confidence: 'high', drivers }
 }

@@ -5,8 +5,8 @@
   import MapControls from '$lib/components/MapControls.svelte'
   import SpeciesSwitcher from '$lib/components/SpeciesSwitcher.svelte'
   import SpotDetail from '$lib/components/SpotDetail.svelte'
-  import type { MapPageState } from '$lib/state/map-page.svelte'
   import type { SpeciesRenderConfig } from '$lib/species/registry'
+  import type { MapPageState } from '$lib/state/map-page.svelte'
 
   let {
     mapState,
@@ -29,12 +29,12 @@
     <SpeciesSwitcher current={species} />
   </div>
   {#if config.showConditions}
-    <ConditionsChip center={config.initialView.center} />
+    <ConditionsChip center={config.initialView.center} {species} />
   {/if}
 </div>
 
 <div class="absolute top-28 right-2.5 z-10">
-  <MapControls bind:layers={mapState.layers} bind:filter={mapState.filter} copy={config.copy} direction="down" />
+  <MapControls {mapState} copy={config.copy} direction="down" />
 </div>
 
 <div class="absolute bottom-10 left-2 z-10">

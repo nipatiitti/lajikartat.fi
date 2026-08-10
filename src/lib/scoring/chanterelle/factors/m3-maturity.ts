@@ -1,4 +1,4 @@
-import { clamp, logSaturate } from '../../core/math'
+import { clamp } from '../../core/math'
 import type { FactorResult } from '../../core/types'
 import type { ChanterelleInput, DevClass } from '../types'
 
@@ -8,8 +8,8 @@ import type { ChanterelleInput, DevClass } from '../types'
 const DEV_CLASS_SCORES: Record<DevClass, number> = {
   open: 0.05,
   seedling: 0.05,
-  young: 0.3,
-  middle: 0.65,
+  young: 0.2,
+  middle: 0.5,
   mature: 1.0,
   shelterwood: 0.85,
   unevenAged: 0.85
@@ -32,7 +32,9 @@ export function m3Maturity(input: ChanterelleInput): FactorResult {
   }
 
   if (input.meanAgeYears !== null) {
-    signals.push(logSaturate(input.meanAgeYears, 80))
+    // Linear ramp 20→80 y: logSaturate flattened too early (a 60 y stand sat
+    // at ~0.94), which erased the age signal across the managed-forest range.
+    signals.push(clamp((input.meanAgeYears - 20) / 60))
     if (input.meanAgeYears >= 60) drivers.push(`keski-ikä ${Math.round(input.meanAgeYears)} v`)
   }
 

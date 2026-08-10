@@ -91,7 +91,7 @@
 
       {#if showConditions && coords}
         <div class="mt-2 flex justify-center">
-          <ConditionsChip center={coords} />
+          <ConditionsChip center={coords} {species} />
         </div>
       {/if}
 

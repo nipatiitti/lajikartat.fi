@@ -1,5 +1,5 @@
-import type { ExpressionSpecification, FilterSpecification, LayerSpecification, SourceSpecification } from 'maplibre-gl'
 import type { FeatureCollection } from 'geojson'
+import type { ExpressionSpecification, FilterSpecification, LayerSpecification, SourceSpecification } from 'maplibre-gl'
 import type { CandidateFilter } from './types'
 
 // Candidate source/layer builders — pure spec factories so Map.svelte can
@@ -92,7 +92,7 @@ export function candidateLayers(opts: CandidatePaintOptions): LayerSpecification
         1
       ]),
       'heatmap-intensity': expr(['interpolate', ['linear'], ['zoom'], 9, 0.8, 13, 2.2]),
-      'heatmap-radius': expr(['interpolate', ['exponential', 1.6], ['zoom'], 9, 8, 11, 18, HEAT_MAX_ZOOM, 42]),
+      'heatmap-radius': expr(['interpolate', ['exponential', 4], ['zoom'], 9, 8, 11, 18, HEAT_MAX_ZOOM, 42]),
       'heatmap-color': expr([
         'interpolate',
         ['linear'],

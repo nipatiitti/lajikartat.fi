@@ -38,7 +38,7 @@ export const CHANTERELLE_PARAMS: Record<ChanterelleVariant, ChanterelleParams> =
   kantarelli: {
     weights: { M1: 1.0, M2: 1.2, M3: 1.2, M4: 0.7, M6: 1.5, M7: 0.7 },
     m9Band: [0.9, 1.15],
-    fertilityScores: { 1: 0.55, 2: 0.8, 3: 1.0, 4: 0.7, 5: 0.25, 6: 0.05, 7: 0.3, 8: 0.2 },
+    fertilityScores: { 1: 0.4, 2: 0.65, 3: 1.0, 4: 0.55, 5: 0.2, 6: 0.05, 7: 0.25, 8: 0.15 },
     subgroupMultiplier: { korpi: 0.4, rame: 0.3, openMire: 0.05 },
     edgeSignalWeights: { track: 1.0, ditch: 0.8 },
     soilPenalty: { peat: 0.75, rock: 0.3, rockFreeAllowance: 0.3 }
@@ -48,7 +48,7 @@ export const CHANTERELLE_PARAMS: Record<ChanterelleVariant, ChanterelleParams> =
   suppilovahvero: {
     weights: { M1: 1.2, M2: 1.2, M3: 1.2, M4: 0.7, M6: 1.5, M7: 0.7 },
     m9Band: [0.9, 1.15],
-    fertilityScores: { 1: 0.7, 2: 0.9, 3: 1.0, 4: 0.45, 5: 0.1, 6: 0.05, 7: 0.15, 8: 0.1 },
+    fertilityScores: { 1: 0.55, 2: 0.8, 3: 1.0, 4: 0.35, 5: 0.1, 6: 0.05, 7: 0.15, 8: 0.1 },
     subgroupMultiplier: { korpi: 0.85, rame: 0.35, openMire: 0.05 },
     edgeSignalWeights: { track: 0.65, ditch: 1.0 },
     soilPenalty: { peat: 0.45, rock: 0.3, rockFreeAllowance: 0 }

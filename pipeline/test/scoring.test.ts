@@ -83,14 +83,18 @@ describe('combineLimiting — regression lock (pre-weighting behaviour must not 
     expect(r.confidence).toBe('med')
   })
 
-  it('applies modulator bands piecewise-linearly around a neutral 0.5', () => {
+  it('applies modulator bands piecewise-linearly, normalised to the band top', () => {
     const hard = [{ id: 'A', result: { subScore: 0.64, confidence: 'high' as const } }]
+    // The multiplier is divided by the max attainable (1.3), so only a perfect
+    // modulator reaches the hard-filter score and nothing clamps into a 1.0 tie.
+    const best = combineLimiting(hard, [{ id: 'M', band: [0.7, 1.3], result: { subScore: 1, confidence: 'med' } }])
+    expect(best.composite).toBeCloseTo(0.64, 10)
     const up = combineLimiting(hard, [
       { id: 'M', band: [0.7, 1.3], result: { subScore: 0.75, confidence: 'med' } }
     ])
-    expect(up.composite).toBeCloseTo(0.64 * 1.15, 10)
+    expect(up.composite).toBeCloseTo((0.64 * 1.15) / 1.3, 10)
     const down = combineLimiting(hard, [{ id: 'M', band: [0.7, 1.3], result: { subScore: 0, confidence: 'med' } }])
-    expect(down.composite).toBeCloseTo(0.64 * 0.7, 10)
+    expect(down.composite).toBeCloseTo((0.64 * 0.7) / 1.3, 10)
     const neutral = combineLimiting(hard, [
       { id: 'M', band: [0.7, 1.3], result: { subScore: null, confidence: 'med' } }
     ])

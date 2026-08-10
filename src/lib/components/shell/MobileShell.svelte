@@ -38,13 +38,13 @@
   </div>
   {#if config.showConditions}
     <div class="pointer-events-auto self-start">
-      <ConditionsChip center={config.initialView.center} />
+      <ConditionsChip center={config.initialView.center} {species} />
     </div>
   {/if}
 </header>
 
 <div class="absolute right-2 bottom-10 z-10">
-  <MapControls bind:layers={mapState.layers} bind:filter={mapState.filter} copy={config.copy} direction="up" />
+  <MapControls {mapState} copy={config.copy} direction="up" />
 </div>
 
 <div class="absolute bottom-10 left-2 z-10">

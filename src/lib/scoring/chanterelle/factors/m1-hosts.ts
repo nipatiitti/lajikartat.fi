@@ -27,10 +27,10 @@ export function m1Hosts(input: ChanterelleInput, variant: ChanterelleVariant): F
     let subScore: number
 
     if (variant === 'kantarelli') {
-      // Mixed best; monoculture still decent; nearly pure deciduous mediocre.
-      subScore = 0.55 + 0.45 * clamp(mixedness / 0.5)
+      // Mixed best; monoculture clearly worse; nearly pure deciduous mediocre.
+      subScore = 0.3 + 0.7 * clamp(mixedness / 0.45)
       if (conifer < 0.2) {
-        subScore = Math.min(subScore, 0.35)
+        subScore = Math.min(subScore, 0.3)
         drivers.push('lähes puhdas lehtimetsä')
       } else if (mixedness >= 0.35) {
         drivers.push('sekametsä (parhaat kantarellisadot)')
@@ -58,8 +58,8 @@ export function m1Hosts(input: ChanterelleInput, variant: ChanterelleVariant): F
     const subScore =
       variant === 'kantarelli'
         ? g === 'otherConifer'
-          ? 0.5
-          : 0.7
+          ? 0.4
+          : 0.55
         : g === 'spruce'
           ? 0.85
           : g === 'pine' || g === 'otherConifer'

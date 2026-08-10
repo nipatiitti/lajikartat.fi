@@ -50,6 +50,12 @@ function multiplierFor(subScore: number, band: [number, number]): number {
  * band; explicit VETOES short-circuit the composite to 0 with the reason
  * surfaced. Null sub-scores drop out (unknown ≠ bad) — they are never treated
  * as 0, so a missing layer can't fake a veto.
+ *
+ * The combined modulator multiplier is normalised by its maximum attainable
+ * value, so the composite reaches the hard-filter score only when every
+ * available modulator is at its best. Without this, boosting bands (hi > 1)
+ * push top sites past 1.0 into the clamp and the best candidates collapse
+ * into an unranked tie at exactly 1.0.
  */
 export function combineLimiting(
   hard: LimitingFactor[],
@@ -66,13 +72,16 @@ export function combineLimiting(
       : 0
 
   let multiplier = 1
+  let maxMultiplier = 1
   for (const m of modulators) {
     if (m.result.subScore === null) continue
-    multiplier *= multiplierFor(m.result.subScore, m.band ?? [0.7, 1.3])
+    const band = m.band ?? [0.7, 1.3]
+    multiplier *= multiplierFor(m.result.subScore, band)
+    maxMultiplier *= Math.max(1, band[1])
   }
 
   const vetoFired = vetoes.some((v) => v.result.subScore === 0)
-  const composite = vetoFired ? 0 : clamp(hardScore * multiplier)
+  const composite = vetoFired ? 0 : clamp((hardScore * multiplier) / maxMultiplier)
   const confidence = hardConfidence(hard)
 
   const toWhy = (f: LimitingFactor, weight: number): WhyFactor => ({

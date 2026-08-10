@@ -1,11 +1,23 @@
 // Display-only weather conditions — NEVER part of stored composites (design
 // rule: temporal factors stay frontend-only).
 
-export interface Conditions {
-  /** Rolling rain sum over the window, mm — null when no station reported. */
-  rainSumMm: number | null
-  /** Mean daily temperature over the window, °C. */
+export interface DailyWeather {
+  /** ISO date, YYYY-MM-DD. */
+  date: string
+  /** Rain sum for the day, mm — null when not measured. */
+  rainMm: number | null
+  /** Mean temperature for the day, °C. */
   meanTempC: number | null
+  source: 'obs' | 'forecast'
+}
+
+export interface Conditions {
+  /** Rolling rain sum over the past window, mm — null when no station reported. */
+  rainSumMm: number | null
+  /** Mean daily temperature over the past window, °C. */
+  meanTempC: number | null
+  /** Past observation days followed by forecast days, ascending by date. */
+  days: DailyWeather[]
   from: Date
   to: Date
 }

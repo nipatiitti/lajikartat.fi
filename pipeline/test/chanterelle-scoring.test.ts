@@ -105,7 +105,7 @@ describe('M1 — host trees & mix', () => {
     const mono = m1Hosts({ ...baseInput, pineShare: 0.95, spruceShare: 0.03, otherShare: 0.02 }, 'kantarelli')
       .subScore as number
     expect(mixed).toBeGreaterThan(mono)
-    expect(mono).toBeGreaterThan(0.4) // monoculture penalised, not vetoed
+    expect(mono).toBeGreaterThan(0.25) // monoculture penalised, not vetoed
   })
 
   it('[S] tracks spruce share and collapses in pure deciduous', () => {
@@ -148,7 +148,7 @@ describe('M6 — edge & disturbance proximity', () => {
       { ...baseInput, nearestTrackM: 900, nearestDitchM: 900, ditchesIntersectingCount: 0 },
       'kantarelli'
     )
-    expect(interior.subScore).toBeCloseTo(0.15, 5)
+    expect(interior.subScore).toBeCloseTo(0.05, 5)
   })
 
   it('weights ditches above tracks for [S]', () => {

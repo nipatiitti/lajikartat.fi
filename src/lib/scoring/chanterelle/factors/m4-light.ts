@@ -17,11 +17,11 @@ export function m4Light(input: ChanterelleInput, variant: ChanterelleVariant): F
   let subScore: number
 
   if (variant === 'kantarelli') {
-    subScore = 0.2 + 0.8 * gaussianPeak(ba, 18, 8)
+    subScore = 0.1 + 0.9 * gaussianPeak(ba, 18, 7)
     if (ba >= 12 && ba <= 24) drivers.push('puoliavoin latvus (valoa maanpinnalle)')
     else if (ba > 28) drivers.push('tiheä, varjoisa latvus (lähinnä loppukauden paikka)')
   } else {
-    subScore = 0.15 + 0.85 * clamp(ba / 24)
+    subScore = 0.05 + 0.95 * clamp(ba / 24)
     if (ba >= 20) drivers.push('sulkeutunut, varjoisa latvus (sammaleinen ja kostea)')
     else if (ba < 12) drivers.push('harva latvus, kuivuu helposti')
   }

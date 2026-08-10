@@ -1,18 +1,17 @@
 <script lang="ts">
   import { COPY, scoreIndex } from '$lib/copy'
   import { BASEMAP_IDS, BASEMAPS } from '$lib/map/basemaps'
-  import type { CandidateFilter } from '$lib/map/types'
-  import type { LayerSettings } from '$lib/state/map-page.svelte'
+  import type { MapPageState } from '$lib/state/map-page.svelte'
   import type { SpeciesCopy } from '$lib/species/registry'
 
+  // The reactive state class is passed whole: element binds write through the
+  // instance, so no bind: chain (and no ownership warnings) between components.
   let {
-    layers = $bindable(),
-    filter = $bindable(),
+    mapState,
     copy,
     direction = 'down'
   }: {
-    layers: LayerSettings
-    filter: CandidateFilter
+    mapState: MapPageState
     copy: SpeciesCopy
     /** Which way the panel opens relative to the button. */
     direction?: 'up' | 'down'
@@ -58,26 +57,26 @@
       <label class="flex flex-col gap-1 text-sm">
         <span class="flex justify-between text-gray-600">
           <span>{COPY.minPotential}</span>
-          <span class="font-mono tabular-nums">{scoreIndex(filter.minComposite)}/100</span>
+          <span class="font-mono tabular-nums">{scoreIndex(mapState.filter.minComposite)}/100</span>
         </span>
-        <input type="range" min="0" max="1" step="0.01" bind:value={filter.minComposite} class="w-full" />
+        <input type="range" min="0" max="1" step="0.01" bind:value={mapState.filter.minComposite} class="w-full" />
       </label>
 
       <div class="flex flex-col gap-1 text-sm">
         <span class="flex items-center justify-between text-gray-600">
           <label class="flex items-center gap-1.5">
-            <input type="checkbox" bind:checked={layers.candidatesVisible} />
+            <input type="checkbox" bind:checked={mapState.layers.candidatesVisible} />
             <span>{layerLabel}</span>
           </label>
-          <span class="font-mono text-xs tabular-nums">{Math.round(layers.candidateOpacity * 100)} %</span>
+          <span class="font-mono text-xs tabular-nums">{Math.round(mapState.layers.candidateOpacity * 100)} %</span>
         </span>
         <input
           type="range"
           min="0.1"
           max="1"
           step="0.05"
-          bind:value={layers.candidateOpacity}
-          disabled={!layers.candidatesVisible}
+          bind:value={mapState.layers.candidateOpacity}
+          disabled={!mapState.layers.candidatesVisible}
           class="w-full"
           aria-label="Tason läpinäkyvyys"
         />
@@ -88,7 +87,7 @@
         <div class="flex flex-col gap-0.5">
           {#each BASEMAP_IDS as id (id)}
             <label class="flex items-center gap-1.5">
-              <input type="radio" name="basemap" value={id} bind:group={layers.basemapId} />
+              <input type="radio" name="basemap" value={id} bind:group={mapState.layers.basemapId} />
               <span>{BASEMAPS[id].label}</span>
             </label>
           {/each}
