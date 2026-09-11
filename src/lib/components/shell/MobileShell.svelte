@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ConditionsChip from '$lib/components/ConditionsChip.svelte'
+  import PickingLinkPill from '$lib/components/PickingLinkPill.svelte'
   import Legend from '$lib/components/Legend.svelte'
   import LoadStatus from '$lib/components/LoadStatus.svelte'
   import MapControls from '$lib/components/MapControls.svelte'
@@ -32,13 +32,13 @@
     <a href="/" class="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-100" aria-label="Etusivulle">←</a>
     <div class="min-w-0 flex-1">
       <h1 class="truncate text-sm leading-tight font-semibold">{config.label}</h1>
-      <p class="text-[11px] leading-tight text-gray-500">{config.regionLabel}</p>
+      <p class="text-[11px] leading-tight text-gray-500">{mapState.regionLabel ?? config.regionLabel}</p>
     </div>
     <SpeciesSwitcher current={species} />
   </div>
   {#if config.showConditions}
     <div class="pointer-events-auto self-start">
-      <ConditionsChip center={config.initialView.center} {species} />
+      <PickingLinkPill center={config.initialView.center} {species} />
     </div>
   {/if}
 </header>
@@ -48,12 +48,12 @@
 </div>
 
 <div class="absolute bottom-10 left-2 z-10">
-  <Legend ramp={config.ramp} />
+  <Legend ramp={config.ramp} minComposite={mapState.filter.minComposite} />
 </div>
 
-<LoadStatus loading={!mapState.geojson && !mapState.loadError} error={mapState.loadError} />
+<LoadStatus loading={!mapState.ready && !mapState.loadError} error={mapState.loadError} />
 
-{#if mapState.selectedId}
+{#if mapState.selectedId && config.render !== 'raster'}
   <BottomSheet bind:snap onclose={() => mapState.select(null)}>
     <SpotDetail
       {species}

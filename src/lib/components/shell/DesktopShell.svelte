@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ConditionsChip from '$lib/components/ConditionsChip.svelte'
+  import PickingLinkPill from '$lib/components/PickingLinkPill.svelte'
   import Legend from '$lib/components/Legend.svelte'
   import LoadStatus from '$lib/components/LoadStatus.svelte'
   import MapControls from '$lib/components/MapControls.svelte'
@@ -24,12 +24,12 @@
     <div class="min-w-0">
       <a href="/" class="text-[11px] text-gray-400 hover:text-gray-600">← lajikartat.fi</a>
       <h1 class="truncate font-semibold">{config.label}</h1>
-      <p class="text-xs text-gray-500">{config.regionLabel}</p>
+      <p class="text-xs text-gray-500">{mapState.regionLabel ?? config.regionLabel}</p>
     </div>
     <SpeciesSwitcher current={species} />
   </div>
   {#if config.showConditions}
-    <ConditionsChip center={config.initialView.center} {species} />
+    <PickingLinkPill center={config.initialView.center} {species} />
   {/if}
 </div>
 
@@ -38,12 +38,12 @@
 </div>
 
 <div class="absolute bottom-10 left-2 z-10">
-  <Legend ramp={config.ramp} />
+  <Legend ramp={config.ramp} minComposite={mapState.filter.minComposite} />
 </div>
 
-<LoadStatus loading={!mapState.geojson && !mapState.loadError} error={mapState.loadError} />
+<LoadStatus loading={!mapState.ready && !mapState.loadError} error={mapState.loadError} />
 
-{#if mapState.selectedId}
+{#if mapState.selectedId && config.render !== 'raster'}
   <aside class="absolute inset-y-0 right-0 z-20 w-96 border-l border-gray-200 bg-white">
     <SpotDetail
       {species}

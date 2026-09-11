@@ -12,9 +12,10 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@scoring": ["../src/lib/scoring/index.ts"],
-      "@scoring/*": ["../src/lib/scoring/*"]
+      "@scoring/*": ["../src/lib/scoring/*"],
+      "@raster": ["../src/lib/raster/encoding.ts"]
     },
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../src/lib/scoring/**/*.ts"]
+  "include": ["src/**/*.ts", "../src/lib/scoring/**/*.ts", "../src/lib/raster/**/*.ts"]
 }

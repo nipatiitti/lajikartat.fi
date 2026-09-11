@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getCandidateDetail } from '$lib/candidates.remote'
-  import ConditionsChip from '$lib/components/ConditionsChip.svelte'
+  import PickingLinkPill from '$lib/components/PickingLinkPill.svelte'
   import StarPlot, { type StarAxis } from '$lib/components/StarPlot.svelte'
   import { CONFIDENCE_CHIP_CLASSES, CONFIDENCE_LABELS, COPY, FACTOR_SHORT_LABELS, scoreIndex } from '$lib/copy'
   import type { SpeciesCopy } from '$lib/species/registry'
@@ -91,7 +91,7 @@
 
       {#if showConditions && coords}
         <div class="mt-2 flex justify-center">
-          <ConditionsChip center={coords} {species} />
+          <PickingLinkPill center={coords} {species} spot />
         </div>
       {/if}
 

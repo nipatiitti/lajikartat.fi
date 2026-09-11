@@ -2,6 +2,17 @@ import { clamp, logSaturate } from '../../core/math'
 import type { FactorResult } from '../../core/types'
 import type { ChanterelleInput } from '../types'
 
+/** Buildings within 500 m at which the settlement signal has halved (a hamlet, not a lone barn). */
+export const BUILDINGS_HALF = 4
+
+/** Numeric core of M9: min of the available signals; negative / NaN = unknown; −1 when both unknown. */
+export function m9Core(nearestCarRoadM: number, buildingsWithin500m: number): number {
+  let s = Infinity
+  if (nearestCarRoadM >= 0) s = Math.min(s, logSaturate(nearestCarRoadM, 2000))
+  if (buildingsWithin500m >= 0) s = Math.min(s, 1 / (1 + buildingsWithin500m / BUILDINGS_HALF))
+  return s === Infinity ? -1 : clamp(s)
+}
+
 /**
  * M9 — remoteness / picking pressure (MODULATOR, mild). Distance from car roads
  * and settlement → fresher, un-picked fruiting bodies on the day. Deliberately
@@ -10,21 +21,17 @@ import type { ChanterelleInput } from '../types'
  * from the paved network (good M9). (species/chantarelle.md §M9)
  */
 export function m9Remoteness(input: ChanterelleInput): FactorResult {
-  const signals: number[] = []
-  const drivers: string[] = []
+  const subScore = m9Core(input.nearestCarRoadM ?? -1, input.buildingsWithin500m ?? -1)
+  if (subScore < 0) return { subScore: null, confidence: 'low', drivers: [] }
 
+  const drivers: string[] = []
   if (input.nearestCarRoadM !== null) {
-    signals.push(logSaturate(input.nearestCarRoadM, 2000))
     if (input.nearestCarRoadM > 1000) drivers.push(`${(input.nearestCarRoadM / 1000).toFixed(1)} km autotielle`)
     else if (input.nearestCarRoadM < 150) drivers.push('aivan autotien vieressä, todennäköisesti kaluttu')
   }
-
-  if (input.buildingsWithin500m !== null) {
-    signals.push(1 / (1 + input.buildingsWithin500m))
-    if (input.buildingsWithin500m >= 3) drivers.push(`${input.buildingsWithin500m} rakennusta 500 m säteellä`)
+  if (input.buildingsWithin500m !== null && input.buildingsWithin500m >= 3) {
+    drivers.push(`${input.buildingsWithin500m} rakennusta 500 m säteellä`)
   }
 
-  if (signals.length === 0) return { subScore: null, confidence: 'low', drivers: [] }
-
-  return { subScore: clamp(Math.min(...signals)), confidence: 'high', drivers }
+  return { subScore, confidence: 'high', drivers }
 }

@@ -10,6 +10,11 @@ import type { DailyWeather } from './types'
 // soaking rain and peaks around 11-14 days (forager consensus), suppilovahvero
 // runs later, colder and survives frost. The mm thresholds and the
 // suppilovahvero kernel are calibrated assumptions, not literature values.
+//
+// 2026-09-11: the model now also explains itself. `pickingAnalysis` returns the
+// rain events it counted, the peak window each one causes, per-day gate values
+// and a "projection" tail past the forecast (no further rain assumed) so a
+// forecast rain's flush is visible even when it peaks after the forecast ends.
 
 export type PickingSpecies = 'kantarelli' | 'suppilovahvero'
 
@@ -25,6 +30,7 @@ export type PickingTag =
   | 'flush-rising'
   | 'flush-peak'
   | 'flush-fading'
+  | 'early-flush-fading'
   | 'no-recent-rain'
   | 'steady-fair'
 
@@ -37,6 +43,68 @@ export interface PickingDay {
   peakInDays?: number
   /** Forecast trust, 1 today decaying with distance. */
   confidence: number
+  /** True past the forecast horizon: assumes no further rain. */
+  projected?: boolean
+}
+
+/** A soaking rain the model counts as a flush trigger, with the window it causes. */
+export interface PickingRainEvent {
+  /** First wet day of the run. */
+  start: string
+  /** First day of the best 3-day soaking window (inside the run). */
+  soakStart: string
+  /** Last day of the best 3-day soaking window: the flush clock starts here. */
+  end: string
+  /** Index of `end` in `PickingAnalysis.series`. */
+  endIdx: number
+  /** Whole wet run, mm. */
+  mm: number
+  /** Best 3-day sum, mm (the thresholded quantity). */
+  soakMm: number
+  /** 0..1 by event size. */
+  amplitude: number
+  /** The soaking window ends on a forecast day. */
+  forecast: boolean
+  /** First fruit bodies expected. */
+  firstFruit: string
+  peakStart: string
+  peakEnd: string
+  /** Kernel reaches zero. */
+  fadeEnd: string
+}
+
+export interface PickingDayDetail extends PickingDay {
+  projected: boolean
+  /** 0..1 flush drive from all contributing rain events. */
+  drive: number
+  gTemp: number
+  gDrought: number
+  gSeason: number
+  gFrost: number
+  /** Trailing 14-day mean temperature, null when nothing was measured. */
+  t14: number | null
+  /** Trailing 21-day rain sum, mm. */
+  p21: number
+  /** Index into `events` of the strongest contributor, when any. */
+  driverEvent: number | null
+}
+
+export interface PickingAnalysis {
+  species: PickingSpecies
+  /** obs + forecast + synthesized projection days, ascending. */
+  series: DailyWeather[]
+  /** First forecast day. */
+  todayIdx: number
+  /** Last forecast day. */
+  forecastEndIdx: number
+  /** A hard frost has already ended the season (kantarelli only). */
+  latched: boolean
+  latchedOn: string | null
+  events: PickingRainEvent[]
+  /** From `todayIdx` to the end of `series`. */
+  days: PickingDayDetail[]
+  /** Model run over the observed days before today (`hindcastDays` of them). */
+  hindcast: PickingDayDetail[]
 }
 
 /** Piecewise-linear curve: [x, y] breakpoints, clamped at both ends. */
@@ -56,6 +124,12 @@ const dayOfYear = (iso: string): number => {
   return Math.floor((+d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1
 }
 
+/** Season gate for a species on a date, 0..1. */
+export const seasonAt = (species: PickingSpecies, iso: string): number => curve(dayOfYear(iso), PARAMS[species].season)
+
+export const addDays = (iso: string, k: number): string =>
+  new Date(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) + k * 864e5).toISOString().slice(0, 10)
+
 interface SpeciesParams {
   /** Flush kernel over days since the triggering rain ended. */
   flush: Curve
@@ -73,7 +147,7 @@ interface SpeciesParams {
   latch: boolean
 }
 
-const PARAMS: Record<PickingSpecies, SpeciesParams> = {
+export const PARAMS: Record<PickingSpecies, SpeciesParams> = {
   kantarelli: {
     flush: [
       [6, 0],
@@ -141,6 +215,7 @@ const PARAMS: Record<PickingSpecies, SpeciesParams> = {
 const RAIN_EVENT_MIN_MM = 15
 const RAIN_EVENT_MIN_DRY_SOIL_MM = 25
 const RAIN_EVENT_SAT_MM = 40
+const DRY_SOIL_ANTECEDENT_MM = 20
 const WET_DAY_MM = 0.5
 const BASELINE = 0.15
 const DROUGHT: Curve = [
@@ -152,11 +227,24 @@ const DROUGHT: Curve = [
 const etFactor = (month: number): number =>
   month <= 4 ? 0.6 : month === 5 ? 0.8 : month <= 8 ? 1 : month === 9 ? 0.7 : 0.5
 
+/** Rain over 21 days that reads as fully moist ground in the given month, mm. */
+export const moistureNeedMm = (month: number): number => Math.round(30 * etFactor(month))
+
+/**
+ * Days synthesized past the forecast so a forecast rain's flush is visible:
+ * enough for a suppilovahvero peak window (24 d) after the last forecast day.
+ */
+export const PROJECTION_DAYS = 24
+
 const rainOf = (d: DailyWeather): number => d.rainMm ?? 0
+const monthOf = (iso: string): number => Number(iso.slice(5, 7))
 
 interface RainEvent {
+  startIdx: number
   /** Index of the event's last wet day (the clock starts when soil is wet). */
   endIdx: number
+  mm: number
+  soakMm: number
   /** 0..1 by event size. */
   amplitude: number
 }
@@ -184,7 +272,9 @@ function findRainEvents(days: DailyWeather[]): RainEvent[] {
     }
     let best = 0
     let bestEnd = i
+    let total = 0
     for (let k = i; k < j; k++) {
+      total += rainOf(days[k])
       let window = 0
       for (let w = Math.max(i, k - 2); w <= k; w++) window += rainOf(days[w])
       if (window > best) {
@@ -194,76 +284,150 @@ function findRainEvents(days: DailyWeather[]): RainEvent[] {
     }
     let antecedent = 0
     for (let k = Math.max(0, i - 14); k < i; k++) antecedent += rainOf(days[k])
-    const min = antecedent < 20 ? RAIN_EVENT_MIN_DRY_SOIL_MM : RAIN_EVENT_MIN_MM
-    if (best >= min) events.push({ endIdx: bestEnd, amplitude: Math.min(1, best / RAIN_EVENT_SAT_MM) })
+    // Same evapotranspiration adjustment as the drought gate: in a cool month
+    // less rain keeps the ground moist, so a modest front still counts.
+    const dry = antecedent / etFactor(monthOf(days[i].date)) < DRY_SOIL_ANTECEDENT_MM
+    const min = dry ? RAIN_EVENT_MIN_DRY_SOIL_MM : RAIN_EVENT_MIN_MM
+    if (best >= min) {
+      events.push({
+        startIdx: i,
+        endIdx: bestEnd,
+        mm: Math.round(total),
+        soakMm: Math.round(best * 10) / 10,
+        amplitude: Math.min(1, best / RAIN_EVENT_SAT_MM)
+      })
+    }
     i = j
   }
   return events
 }
 
 /**
- * Pickability outlook from `todayIdx` (first forecast day) over the horizon.
- * `days` is the merged obs + forecast series, ascending. Returns null for
- * species without a model.
+ * Append `n` days after the series with no rain and a persistence
+ * temperature (mean of the last five measured forecast temperatures). This is
+ * the "assume no further rain" tail the calendar draws hatched.
  */
-export function pickingOutlook(days: DailyWeather[], species: string, horizonDays = 8): PickingDay[] | null {
+function extendWithProjection(days: DailyWeather[], n: number): DailyWeather[] {
+  if (n <= 0 || days.length === 0) return days
+  const last = days[days.length - 1]
+  const measured = days.filter((d) => d.meanTempC !== null)
+  const recent = (
+    measured.some((d) => d.source === 'forecast') ? measured.filter((d) => d.source === 'forecast') : measured
+  ).slice(-5)
+  const temp =
+    recent.length > 0
+      ? Math.round((recent.reduce((s, d) => s + (d.meanTempC as number), 0) / recent.length) * 10) / 10
+      : null
+  const tail: DailyWeather[] = []
+  for (let k = 1; k <= n; k++) {
+    tail.push({ date: addDays(last.date, k), rainMm: 0, meanTempC: temp, source: 'projection' })
+  }
+  return [...days, ...tail]
+}
+
+/**
+ * Full analysis from the first forecast day to the end of the projection tail.
+ * `days` is the merged obs + forecast series, ascending. Returns null for
+ * species without a model or when there is no forecast day to anchor "today".
+ */
+export function pickingAnalysis(
+  days: DailyWeather[],
+  species: string,
+  opts: { projectionDays?: number; hindcastDays?: number } = {}
+): PickingAnalysis | null {
   if (species !== 'kantarelli' && species !== 'suppilovahvero') return null
   const p = PARAMS[species]
   const todayIdx = days.findIndex((d) => d.source === 'forecast')
-  if (todayIdx < 0 || days.length === 0) return null
+  if (todayIdx < 0) return null
+  let forecastEndIdx = todayIdx
+  for (let i = todayIdx; i < days.length; i++) if (days[i].source === 'forecast') forecastEndIdx = i
 
-  const events = findRainEvents(days)
+  const series = extendWithProjection(days, opts.projectionDays ?? PROJECTION_DAYS)
+  const rawEvents = findRainEvents(series)
+  const events: PickingRainEvent[] = rawEvents.map((e) => {
+    const end = series[e.endIdx].date
+    return {
+      start: series[e.startIdx].date,
+      soakStart: series[Math.max(e.startIdx, e.endIdx - 2)].date,
+      end,
+      endIdx: e.endIdx,
+      mm: e.mm,
+      soakMm: e.soakMm,
+      amplitude: e.amplitude,
+      forecast: series[e.endIdx].source !== 'obs',
+      firstFruit: addDays(end, p.flush[0][0]),
+      peakStart: addDays(end, p.flush[1][0]),
+      peakEnd: addDays(end, p.flush[2][0]),
+      fadeEnd: addDays(end, p.flush[3][0])
+    }
+  })
   const peakLag = p.flush[1][0]
-  const out: PickingDay[] = []
+
+  const fromIdx = Math.max(0, todayIdx - (opts.hindcastDays ?? 0))
 
   // A hard frost in the recent past latches kantarelli's season shut even
   // before the outlook window starts.
   let latched = false
-  for (let i = Math.max(0, todayIdx - 30); i < todayIdx; i++) {
-    const t = days[i].meanTempC
-    if (t !== null && t <= p.frostHard) latched = true
+  let latchedOn: string | null = null
+  for (let i = Math.max(0, fromIdx - 30); i < fromIdx; i++) {
+    const t = series[i].meanTempC
+    if (t !== null && t <= p.frostHard && !latched) {
+      latched = true
+      latchedOn = series[i].date
+    }
   }
 
-  for (let n = todayIdx; n <= Math.min(days.length - 1, todayIdx + horizonDays); n++) {
+  const confAtForecastEnd = Math.max(0.4, 1 - 0.06 * (forecastEndIdx - todayIdx))
+  const out: PickingDayDetail[] = []
+
+  for (let n = fromIdx; n < series.length; n++) {
     // Flush drive: saturating superposition of all triggering rain events.
     let drive = 0
     let age = -1
     let nextPeak = Infinity
-    for (const e of events) {
+    let driverEvent: number | null = null
+    let driverF = 0
+    rawEvents.forEach((e, idx) => {
       const f = curve(n - e.endIdx, p.flush) * e.amplitude
       if (f > 0) {
         drive = 1 - (1 - drive) * (1 - f)
         if (n - e.endIdx > age) age = n - e.endIdx
+        if (f > driverF) {
+          driverF = f
+          driverEvent = idx
+        }
       }
       const untilPeak = e.endIdx + peakLag - n
       if (untilPeak > 0 && untilPeak < nextPeak) nextPeak = untilPeak
-    }
+    })
 
     // Trailing means/sums skip unmeasured days.
     let tempSum = 0
     let tempN = 0
     for (let i = Math.max(0, n - 13); i <= n; i++) {
-      const t = days[i].meanTempC
+      const t = series[i].meanTempC
       if (t !== null) {
         tempSum += t
         tempN++
       }
     }
-    const t14 = tempN > 0 ? tempSum / tempN : 10
+    const t14 = tempN > 0 ? tempSum / tempN : null
     let p21 = 0
-    for (let i = Math.max(0, n - 20); i <= n; i++) p21 += rainOf(days[i])
+    for (let i = Math.max(0, n - 20); i <= n; i++) p21 += rainOf(series[i])
 
-    const month = Number(days[n].date.slice(5, 7))
-    const gTemp = curve(t14, p.temp)
-    const gDrought = curve(p21 / etFactor(month), DROUGHT)
-    const gSeason = curve(dayOfYear(days[n].date), p.season)
+    const doy = dayOfYear(series[n].date)
+    const gTemp = curve(t14 ?? 10, p.temp)
+    const gDrought = curve(p21 / etFactor(monthOf(series[n].date)), DROUGHT)
+    const gSeason = curve(doy, p.season)
 
     let gFrost = 1
     for (let i = Math.max(0, n - 3); i <= n; i++) {
-      const t = days[i].meanTempC
+      const t = series[i].meanTempC
       if (t === null) continue
-      if (t <= p.frostHard) latched = true
-      else if (t <= p.frostSoft) gFrost = Math.min(gFrost, p.softMul)
+      if (t <= p.frostHard) {
+        if (!latched) latchedOn = series[i].date
+        latched = true
+      } else if (t <= p.frostSoft) gFrost = Math.min(gFrost, p.softMul)
     }
     if (latched) gFrost = Math.min(gFrost, p.hardMul)
 
@@ -275,28 +439,78 @@ export function pickingOutlook(days: DailyWeather[], species: string, horizonDay
     else if (p.latch && latched) tag = 'season-over-frost'
     else if (!p.latch && gFrost <= p.hardMul) tag = 'frozen-ground'
     else if (gDrought < 0.4) tag = 'too-dry'
-    else if (gTemp < 0.5 && t14 > 15) tag = 'too-hot'
+    else if (gTemp < 0.5 && (t14 ?? 10) > 15) tag = 'too-hot'
     else if (gTemp < 0.5) tag = 'too-cold'
     else if (gSeason < 0.5) tag = 'season-edge'
-    else if (drive >= 0.55 && age >= peakLag && age <= p.flush[2][0]) tag = 'flush-peak'
+    // Same drive floor as the rising state: a modest event's peak is still
+    // its peak, the score carries the size.
+    else if (drive >= 0.3 && age >= peakLag && age <= p.flush[2][0]) tag = 'flush-peak'
     else if (drive >= 0.3 && age >= 0 && age < peakLag) {
       tag = 'flush-rising'
       peakInDays = peakLag - age
-    } else if (drive >= 0.25 && age > p.flush[2][0]) tag = 'flush-fading'
-    else if (nextPeak <= 10) {
+    } else if (drive >= 0.25 && age > p.flush[2][0]) {
+      // A fading flush while the season curve is still climbing is the first
+      // flush of the year, not the end of it (suppilovahvero in September).
+      tag = curve(doy + 14, p.season) > gSeason + 0.05 ? 'early-flush-fading' : 'flush-fading'
+    } else if (nextPeak <= 10) {
       tag = 'waiting-for-flush'
       peakInDays = nextPeak
     } else if (drive < 0.15) tag = 'no-recent-rain'
 
+    const projected = n > forecastEndIdx
+    const confidence =
+      n < todayIdx
+        ? 1
+        : projected
+          ? Math.max(0.15, confAtForecastEnd - 0.04 * (n - forecastEndIdx))
+          : Math.max(0.4, 1 - 0.06 * (n - todayIdx))
+
     out.push({
-      date: days[n].date,
+      date: series[n].date,
       score: Math.round(score * 1000) / 1000,
       tag,
       peakInDays,
-      confidence: Math.max(0.4, 1 - 0.06 * (n - todayIdx))
+      confidence: Math.round(confidence * 1000) / 1000,
+      projected,
+      drive: Math.round(drive * 1000) / 1000,
+      gTemp,
+      gDrought,
+      gSeason,
+      gFrost,
+      t14: t14 === null ? null : Math.round(t14 * 10) / 10,
+      p21: Math.round(p21 * 10) / 10,
+      driverEvent
     })
   }
-  return out
+
+  const split = todayIdx - fromIdx
+  return {
+    species,
+    series,
+    todayIdx,
+    forecastEndIdx,
+    latched,
+    latchedOn,
+    events,
+    days: out.slice(split),
+    hindcast: out.slice(0, split)
+  }
+}
+
+/**
+ * Pickability outlook over the forecast horizon only (no projection days).
+ * Returns null for species without a model.
+ */
+export function pickingOutlook(days: DailyWeather[], species: string, horizonDays = 10): PickingDay[] | null {
+  const a = pickingAnalysis(days, species, { projectionDays: 0 })
+  if (!a) return null
+  return a.days.slice(0, horizonDays + 1).map(({ date, score, tag, peakInDays, confidence }) => ({
+    date,
+    score,
+    tag,
+    peakInDays,
+    confidence
+  }))
 }
 
 /** Finnish labels for the outlook tags (drafts, owner reviews all Finnish). */
@@ -312,6 +526,7 @@ export const PICKING_TAG_LABELS: Record<PickingTag, string> = {
   'flush-rising': 'sato nousussa',
   'flush-peak': 'sato huipussaan',
   'flush-fading': 'sato hiipuu',
+  'early-flush-fading': 'ensisato hiipuu',
   'no-recent-rain': 'ei tuoreita sateita',
   'steady-fair': 'kohtalainen näkymä'
 }
@@ -329,6 +544,7 @@ export const PICKING_TAG_SHORT: Record<PickingTag, string> = {
   'flush-rising': 'Sato nousussa',
   'flush-peak': 'Sato huipussaan',
   'flush-fading': 'Sato hiipuu',
+  'early-flush-fading': 'Alkusato hiipuu',
   'no-recent-rain': 'Ei sateita',
   'steady-fair': 'Kohtalainen'
 }
@@ -374,6 +590,7 @@ const NO_WINDOW_SENTENCES: Record<PickingTag, string> = {
   'flush-peak': 'Sato huipussaan.',
   'flush-rising': 'Sato nousussa.',
   'flush-fading': 'Sato hiipuu, uutta satoa ei vielä näköpiirissä.',
+  'early-flush-fading': 'Ensimmäinen sato hiipuu, pääsesonki on vasta edessä.',
   'waiting-for-flush': 'Sato tuloillaan.',
   'steady-fair': 'Kohtalainen näkymä koko jaksolle.',
   'no-recent-rain': 'Ei tuoreita sateita, näkymä pysyy heikkona.',
@@ -392,6 +609,7 @@ const WINDOW_OPENERS: Record<PickingTag, string> = {
   'flush-peak': 'Sato huipussaan',
   'flush-rising': 'Sato nousussa',
   'flush-fading': 'Sato hiipuu',
+  'early-flush-fading': 'Ensimmäinen sato hiipuu',
   'waiting-for-flush': 'Sato tuloillaan',
   'steady-fair': 'Kohtalainen näkymä',
   'no-recent-rain': 'Ei tuoreita sateita',
@@ -406,6 +624,8 @@ const WINDOW_OPENERS: Record<PickingTag, string> = {
 
 // These states end the discussion; a window would be misleading next to them.
 const WINDOW_IGNORED = new Set<PickingTag>(['out-of-season', 'season-over-frost', 'frozen-ground'])
+// A window starting today is "heti" only when the harvest is already up.
+const WINDOW_IMMEDIATE = new Set<PickingTag>(['flush-peak', 'flush-fading', 'early-flush-fading'])
 
 /** One natural sentence: today's state plus the best days ahead. */
 export function pickingSentence(outlook: PickingDay[], window: PickingWindow | null): string {
@@ -424,7 +644,7 @@ export function pickingSentence(outlook: PickingDay[], window: PickingWindow | n
   if (window.start === today.date && window.end === today.date) {
     return `${opener}, paras päivä on tänään.`
   }
-  const immediate = window.start === today.date && (today.tag === 'flush-peak' || today.tag === 'flush-fading')
+  const immediate = window.start === today.date && WINDOW_IMMEDIATE.has(today.tag)
   // The date's own trailing dot serves as the sentence period.
   return `${opener}, parhaat päivät ${immediate ? 'heti ' : ''}${rangeLabel(window.start, window.end)}`
 }

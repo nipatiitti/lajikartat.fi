@@ -8,7 +8,8 @@ export interface DailyWeather {
   rainMm: number | null
   /** Mean temperature for the day, °C. */
   meanTempC: number | null
-  source: 'obs' | 'forecast'
+  /** 'projection' days are synthesized by the picking model: no rain, persistence temperature. */
+  source: 'obs' | 'forecast' | 'projection'
 }
 
 export interface Conditions {

@@ -5,7 +5,7 @@ import { bbox as turfBbox, centroid, simplify } from '@turf/turf'
 import type { Feature, FeatureCollection } from 'geojson'
 import type { CandidateFeature, ScoredCandidate } from './types'
 
-const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../out')
+export const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../out')
 const PIPELINE_VERSION = 'v1'
 
 export interface ScoredEntry {

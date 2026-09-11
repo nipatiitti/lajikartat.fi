@@ -5,16 +5,16 @@
 export interface SpeciesCopy {
   /** Nominative singular: "lampi", "metsikkö". */
   singular: string
-  /** Nominative plural: "lammet", "metsiköt". */
+  /** Nominative plural: "lammet", "metsiköt" — also the layer toggle label. */
   plural: string
   /** Partitive singular for counts: "1 520 metsikköä", "231 lampea". */
   partitive: string
 }
 
-export interface SpeciesRenderConfig {
+interface SpeciesRenderBase {
   /** Display name for the species. */
   label: string
-  /** Region the current dataset covers ("Pirkanmaa", "Pirkkala"). */
+  /** Region the dataset covers ("Pirkanmaa"); raster species read the live value from the tile descriptor. */
   regionLabel: string
   /** What one candidate unit is called in UI copy. */
   copy: SpeciesCopy
@@ -22,21 +22,33 @@ export interface SpeciesRenderConfig {
   description: string
   /** "Näin luet karttaa" blurb on the lander. */
   howToRead: string
-  /** R2-backed GeoJSON endpoint with `composite`/`confidence`/`name`/`areaHa` per feature. */
-  geometryUrl: string
-  /** Point blob for the heatmap (heatmap species only). */
-  centroidsUrl?: string
-  /** How candidates render: polygons at all zooms, or heatmap→polygon crossfade. */
-  render: 'polygon' | 'heatmap'
-  /** Show the FMI conditions chip (fungi). */
+  /** Show the FMI picking pill (fungi). */
   showConditions?: boolean
-  /** Feature property driving the colour ramp. */
-  colorBy: 'composite'
-  /** [value, colour] stops for the fill ramp, ascending — diverging blue→red. */
+  /** [value, colour] stops for the colour ramp, ascending — diverging blue→red. */
   ramp: Array<[number, string]>
   /** Initial map camera (used only when the URL carries no camera hash). */
   initialView: { center: [number, number]; zoom: number }
 }
+
+/** Discrete candidates: polygons at all zooms, or a heatmap→polygon crossfade. Tappable. */
+export interface VectorSpeciesConfig extends SpeciesRenderBase {
+  render: 'polygon' | 'heatmap'
+  /** R2-backed GeoJSON endpoint with `composite`/`confidence`/`name`/`areaHa` per feature. */
+  geometryUrl: string
+  /** Point blob for the heatmap (heatmap species only). */
+  centroidsUrl?: string
+  /** Feature property driving the colour ramp. */
+  colorBy: 'composite'
+}
+
+/** Continuous 16 m suitability surface served as raster tiles. Nothing to tap. */
+export interface RasterSpeciesConfig extends SpeciesRenderBase {
+  render: 'raster'
+  /** Tile descriptor endpoint (`/tiles/<species>.json`). */
+  tilesUrl: string
+}
+
+export type SpeciesRenderConfig = VectorSpeciesConfig | RasterSpeciesConfig
 
 // RdYlBu-reversed: low scores cool/blue, top candidates hot/red.
 const DIVERGING_RAMP: Array<[number, string]> = [
@@ -46,6 +58,12 @@ const DIVERGING_RAMP: Array<[number, string]> = [
   [0.65, '#fc8d59'],
   [0.8, '#d73027']
 ]
+
+const FUNGI_COPY: SpeciesCopy = { singular: 'ruutu', plural: 'soveltuvuuskartta', partitive: 'ruutua' }
+const FUNGI_HOW_TO_READ =
+  'Kartta näyttää soveltuvuuden 16 metrin ruuduissa: punainen on lupaavin. Arvio perustuu Luken ' +
+  'metsävarakarttoihin, maaston kosteuteen sekä polkujen, ojien ja metsikönreunojen läheisyyteen. ' +
+  'Lähennä, niin reunat ja notkot piirtyvät esiin. Se ei takaa sieniä, vaan kertoo mistä kannattaa aloittaa.'
 
 export const SPECIES_RENDER: Record<string, SpeciesRenderConfig> = {
   ahven: {
@@ -68,37 +86,28 @@ export const SPECIES_RENDER: Record<string, SpeciesRenderConfig> = {
   },
   kantarelli: {
     label: 'Kantarelli',
-    regionLabel: 'Pirkkala',
-    copy: { singular: 'metsikkö', plural: 'metsiköt', partitive: 'metsikköä' },
+    regionLabel: 'Pirkanmaa',
+    copy: FUNGI_COPY,
     description:
       'Valoisia sekametsiä, polunvarsia ja kangasmaita, joissa kantarellin löytymisen ' + 'edellytykset ovat parhaat.',
-    howToRead:
-      'Kaukaa kartta näyttää lämpökarttana, minne lupaavimmat metsiköt keskittyvät. Lähennä, ' +
-      'niin yksittäiset metsiköt piirtyvät esiin. Napauttamalla näet perustelut ja varmuuden.',
-    geometryUrl: '/geometry/kantarelli',
-    centroidsUrl: '/geometry/kantarelli?kind=centroids',
-    render: 'heatmap',
+    howToRead: FUNGI_HOW_TO_READ,
+    tilesUrl: '/tiles/kantarelli.json',
+    render: 'raster',
     showConditions: true,
-    colorBy: 'composite',
     ramp: DIVERGING_RAMP,
-    // The Pirkkala validation forests.
-    initialView: { center: [23.7, 61.43], zoom: 12 }
+    initialView: { center: [23.7, 61.43], zoom: 11 }
   },
   suppilovahvero: {
     label: 'Suppilovahvero',
-    regionLabel: 'Pirkkala',
-    copy: { singular: 'metsikkö', plural: 'metsiköt', partitive: 'metsikköä' },
+    regionLabel: 'Pirkanmaa',
+    copy: FUNGI_COPY,
     description: 'Varjoisia, sammaleisia kuusikoita ja ojanvarsia, suppilovahveron syksyisiä kasvupaikkoja.',
-    howToRead:
-      'Kaukaa kartta näyttää lämpökarttana, minne lupaavimmat metsiköt keskittyvät. Lähennä, ' +
-      'niin yksittäiset metsiköt piirtyvät esiin. Napauttamalla näet perustelut ja varmuuden.',
-    geometryUrl: '/geometry/suppilovahvero',
-    centroidsUrl: '/geometry/suppilovahvero?kind=centroids',
-    render: 'heatmap',
+    howToRead: FUNGI_HOW_TO_READ,
+    tilesUrl: '/tiles/suppilovahvero.json',
+    render: 'raster',
     showConditions: true,
-    colorBy: 'composite',
     ramp: DIVERGING_RAMP,
-    initialView: { center: [23.7, 61.43], zoom: 12 }
+    initialView: { center: [23.7, 61.43], zoom: 11 }
   }
 }
 

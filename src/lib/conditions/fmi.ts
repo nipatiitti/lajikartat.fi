@@ -14,12 +14,13 @@ import type { Conditions, ConditionsProvider, DailyWeather } from './types'
 // returns hourly Precipitation1h + Temperature ~10 days out; we aggregate it
 // to daily values client-side.
 
-// 35 days of history: the suppilovahvero flush kernel reaches back 35 days,
-// so a shorter window is blind to the rain events that matter most in autumn.
-// The chip's headline sum stays a 14-day read.
-const HISTORY_DAYS = 35
+// 42 days of history: the suppilovahvero flush kernel reaches back 35 days,
+// so a shorter window is blind to the rain events that matter most in autumn,
+// and the calendar draws the last four weeks. The headline sum stays a 14-day
+// read. The edited point forecast runs about 10 days out.
+const HISTORY_DAYS = 42
 const SUMMARY_DAYS = 14
-const FORECAST_DAYS = 8
+const FORECAST_DAYS = 10
 const BOX_HALF_DEG = 0.4
 
 const cache = new Map<string, Promise<Conditions | null>>()
@@ -171,7 +172,8 @@ async function fetchForecast([lng, lat]: [number, number]): Promise<DailyWeather
     .map(([date, d]) => ({
       date,
       rainMm: Math.round(d.rain * 10) / 10,
-      meanTempC: d.temps.length > 0 ? Math.round((d.temps.reduce((a, b) => a + b, 0) / d.temps.length) * 10) / 10 : null,
+      meanTempC:
+        d.temps.length > 0 ? Math.round((d.temps.reduce((a, b) => a + b, 0) / d.temps.length) * 10) / 10 : null,
       source: 'forecast' as const
     }))
     .sort((a, b) => (a.date < b.date ? -1 : 1))

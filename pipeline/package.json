@@ -7,12 +7,16 @@
     "probe:score": "tsx src/kernel/probe-scoring.ts",
     "ingest": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/kernel/run.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "calibrate": "tsx src/kernel/raster/calibrate.ts",
+    "publish:raster": "tsx src/kernel/raster/publish.ts"
   },
   "dependencies": {
     "@turf/turf": "^7.3.5",
     "flatbush": "^4.4.0",
+    "geotiff": "^3.0.5",
     "p-limit": "^6.2.0",
+    "pmtiles": "^4.5.0",
     "proj4": "^2.15.0"
   },
   "devDependencies": {

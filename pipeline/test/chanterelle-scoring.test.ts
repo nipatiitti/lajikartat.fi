@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { m1Hosts } from '../../src/lib/scoring/chanterelle/factors/m1-hosts'
 import { m4Light } from '../../src/lib/scoring/chanterelle/factors/m4-light'
+import { m5Moisture } from '../../src/lib/scoring/chanterelle/factors/m5-moisture'
 import { m6Edges } from '../../src/lib/scoring/chanterelle/factors/m6-edges'
 import { scoreChanterelle } from '../../src/lib/scoring/chanterelle/index'
 import type { ChanterelleInput } from '../../src/lib/scoring/chanterelle/types'
@@ -18,11 +19,13 @@ const baseInput: ChanterelleInput = {
   devClass: 'mature',
   meanAgeYears: 85,
   basalAreaM2Ha: 18,
+  canopyCoverPct: null,
   twi: null,
   slopeDeg: null,
   aspectDeg: null,
   nearestTrackM: 30,
   nearestDitchM: 250,
+  nearestStandEdgeM: null,
   ditchesIntersectingCount: 0,
   isDrainedPeatland: false,
   peatFraction: 0.05,
@@ -125,7 +128,7 @@ describe('M1 — host trees & mix', () => {
   })
 })
 
-describe('M4 — canopy/light is species-flipped', () => {
+describe('M4 — canopy/light is species-flipped and unimodal', () => {
   it('dense canopy favours [S], semi-open favours [K]', () => {
     const dense = { ...baseInput, basalAreaM2Ha: 30 }
     const semiOpen = { ...baseInput, basalAreaM2Ha: 18 }
@@ -135,6 +138,43 @@ describe('M4 — canopy/light is species-flipped', () => {
     expect(m4Light(semiOpen, 'kantarelli').subScore as number).toBeGreaterThan(
       m4Light(dense, 'kantarelli').subScore as number
     )
+  })
+
+  it('peaks at ~25 m²/ha for [S] and falls in the densest stands (Tahvanainen 2016)', () => {
+    const s = (ba: number) => m4Light({ ...baseInput, basalAreaM2Ha: ba }, 'suppilovahvero').subScore as number
+    expect(s(25)).toBeGreaterThan(s(15))
+    expect(s(25)).toBeGreaterThan(s(40))
+    expect(s(40)).toBeGreaterThan(0.1)
+  })
+
+  it('uses canopy cover when present and averages it with basal area', () => {
+    const ccOnly = m4Light({ ...baseInput, basalAreaM2Ha: null, canopyCoverPct: 60 }, 'kantarelli')
+    expect(ccOnly.subScore).toBeCloseTo(1, 5)
+    const both = m4Light({ ...baseInput, basalAreaM2Ha: 20, canopyCoverPct: 60 }, 'kantarelli')
+    expect(both.subScore).toBeCloseTo(1, 5)
+    const shaded = m4Light({ ...baseInput, basalAreaM2Ha: 20, canopyCoverPct: 95 }, 'kantarelli')
+    expect(shaded.subScore as number).toBeLessThan(0.8)
+    expect(m4Light({ ...baseInput, basalAreaM2Ha: null, canopyCoverPct: 85 }, 'suppilovahvero').subScore).toBeCloseTo(
+      1,
+      5
+    )
+  })
+})
+
+describe('M5 — moisture from TWI', () => {
+  it('rises into wet hollows for [S] and peaks at moderate wetness for [K]', () => {
+    const s = (twi: number) => m5Moisture({ ...baseInput, twi }, 'suppilovahvero').subScore as number
+    const k = (twi: number) => m5Moisture({ ...baseInput, twi }, 'kantarelli').subScore as number
+    expect(s(9.8)).toBeGreaterThan(s(6.5))
+    expect(s(6.5)).toBeGreaterThan(s(5.3))
+    expect(k(6.5)).toBeGreaterThan(k(12))
+    expect(k(6.5)).toBeGreaterThan(k(2))
+    expect(k(20)).toBeCloseTo(0.25, 5) // floored, not vetoed
+  })
+
+  it('drops out when TWI is unknown', () => {
+    expect(m5Moisture(baseInput, 'kantarelli').subScore).toBeNull()
+    expect(scoreChanterelle(baseInput, 'kantarelli').factors.M5.subScore).toBeNull()
   })
 })
 
@@ -149,6 +189,15 @@ describe('M6 — edge & disturbance proximity', () => {
       'kantarelli'
     )
     expect(interior.subScore).toBeCloseTo(0.05, 5)
+  })
+
+  it('counts a stand boundary as an edge', () => {
+    const interior = { ...baseInput, nearestTrackM: 900, nearestDitchM: 900, nearestStandEdgeM: 900 }
+    const edge = m6Edges({ ...interior, nearestStandEdgeM: 10 }, 'kantarelli')
+    expect(edge.subScore as number).toBeGreaterThan((m6Edges(interior, 'kantarelli').subScore as number) + 0.3)
+    // A stand boundary is a weaker signal than a track: MVMI edges are noisy.
+    expect(edge.subScore as number).toBeLessThan(m6Edges(baseInput, 'kantarelli').subScore as number)
+    expect(edge.drivers?.join(' ')).toMatch(/reuna/)
   })
 
   it('weights ditches above tracks for [S]', () => {
@@ -193,9 +242,11 @@ describe('scoreChanterelle — end to end', () => {
     )
   })
 
-  it('keeps deferred factors (M5/M8) out of the picture without penalty', () => {
+  it('keeps unknown M5 and unused M8 out of the picture without penalty', () => {
     const r = scoreChanterelle(baseInput, 'kantarelli')
-    expect(r.factors.M5).toBeUndefined()
+    expect(r.factors.M5.subScore).toBeNull()
     expect(r.factors.M8).toBeUndefined()
+    const withTwi = scoreChanterelle({ ...baseInput, twi: 6.5 }, 'kantarelli') // the p50 anchor
+    expect(withTwi.factors.M5.subScore).toBeCloseTo(1, 5)
   })
 })

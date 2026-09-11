@@ -1,5 +1,7 @@
 import type { FeatureCollection } from 'geojson'
 import type { ExpressionSpecification, FilterSpecification, LayerSpecification, SourceSpecification } from 'maplibre-gl'
+import { RASTER_MAX, byteToElevation, thresholdToByte } from '$lib/raster/encoding'
+import type { SpeciesTileJson } from '../../routes/tiles/[species].json/+server'
 import type { CandidateFilter } from './types'
 
 // Candidate source/layer builders — pure spec factories so Map.svelte can
@@ -11,6 +13,8 @@ export const SOURCE_CENTROIDS = 'candidate-centroids'
 export const LAYER_FILL = 'candidates-fill'
 export const LAYER_LINE = 'candidates-outline'
 export const LAYER_HEAT = 'candidates-heat'
+export const SOURCE_RELIEF = 'suitability-dem'
+export const LAYER_RELIEF = 'suitability-relief'
 
 // Heatmap → polygon crossfade (tune here): heat fades OUT over HEAT_FADE,
 // polygons fade IN over FILL_FADE, so stands are tappable from ~z12.3 up.
@@ -18,7 +22,7 @@ const HEAT_FADE: [number, number] = [11.5, 13]
 const FILL_FADE: [number, number] = [12, 12.8]
 const HEAT_MAX_ZOOM = 13.5
 
-export type RenderMode = 'polygon' | 'heatmap'
+export type RenderMode = 'polygon' | 'heatmap' | 'raster'
 
 export interface CandidatePaintOptions {
   render: RenderMode
@@ -145,4 +149,93 @@ export function candidateLayers(opts: CandidatePaintOptions): LayerSpecification
 
 export function filterExpression(filter: CandidateFilter): FilterSpecification {
   return ['>=', ['get', 'composite'], filter.minComposite] as unknown as FilterSpecification
+}
+
+// ---- Raster species: a 16 m suitability surface as raster-dem + color-relief.
+// The grey byte of each tile (1..255 = composite 0..1, 0 = nodata) decodes to
+// "elevation" through the custom encoding, so the Potentiaali slider is just a
+// new colour expression — no data reload, no filter.
+
+const TRANSPARENT = 'rgba(0,0,0,0)'
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+/** Colour of the ramp at `v` (linear between stops, clamped at the ends). */
+export function rampColorAt(ramp: Array<[number, string]>, v: number): string {
+  if (v <= ramp[0][0]) return ramp[0][1]
+  const last = ramp[ramp.length - 1]
+  if (v >= last[0]) return last[1]
+  for (let i = 0; i + 1 < ramp.length; i++) {
+    const [v0, c0] = ramp[i]
+    const [v1, c1] = ramp[i + 1]
+    if (v >= v0 && v < v1) {
+      const t = (v - v0) / (v1 - v0)
+      const a = hexToRgb(c0)
+      const b = hexToRgb(c1)
+      const mix = a.map((x, k) => Math.round(x + (b[k] - x) * t))
+      return `rgb(${mix[0]},${mix[1]},${mix[2]})`
+    }
+  }
+  return last[1]
+}
+
+/**
+ * color-relief colour expression: transparent below the threshold (a hard
+ * step half a byte under it), the diverging ramp above. Stops are laid out in
+ * tile-byte space and mapped to MapLibre "elevation" through the shared
+ * encoding, so the ramp stays in composite units.
+ */
+export function reliefColor(ramp: Array<[number, string]>, minComposite: number): ExpressionSpecification {
+  const min = Math.max(0, Math.min(1, minComposite))
+  const bMin = thresholdToByte(min)
+  const stops: Array<number | string> = [0, TRANSPARENT]
+  if (bMin - 0.5 > 0) stops.push(byteToElevation(bMin - 0.5), TRANSPARENT)
+  stops.push(byteToElevation(bMin), rampColorAt(ramp, min))
+  let last = bMin
+  for (const [v, c] of ramp) {
+    const b = thresholdToByte(v)
+    if (b <= last) continue
+    stops.push(byteToElevation(b), c)
+    last = b
+  }
+  if (last < RASTER_MAX) stops.push(byteToElevation(RASTER_MAX), ramp[ramp.length - 1][1])
+  return expr(['interpolate', ['linear'], ['elevation'], ...stops])
+}
+
+export function reliefOpacity(opts: CandidatePaintOptions): number {
+  return opts.visible ? opts.opacity : 0
+}
+
+export function rasterSources(tj: SpeciesTileJson): Record<string, SourceSpecification> {
+  return {
+    [SOURCE_RELIEF]: {
+      type: 'raster-dem',
+      tiles: tj.tiles,
+      tileSize: tj.tileSize,
+      minzoom: tj.minzoom,
+      maxzoom: tj.maxzoom,
+      bounds: tj.bounds,
+      ...tj.encoding
+    } as SourceSpecification
+  }
+}
+
+export function rasterLayers(opts: CandidatePaintOptions, minComposite: number): LayerSpecification[] {
+  return [
+    {
+      id: LAYER_RELIEF,
+      type: 'color-relief',
+      source: SOURCE_RELIEF,
+      paint: {
+        'color-relief-color': reliefColor(opts.ramp, minComposite),
+        'color-relief-opacity': reliefOpacity(opts),
+        // Linear sampling would blend nodata (0) with forest bytes and sweep
+        // the whole ramp along every lake and field edge.
+        resampling: 'nearest'
+      }
+    } as unknown as LayerSpecification
+  ]
 }

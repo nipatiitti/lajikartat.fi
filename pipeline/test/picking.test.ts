@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PROJECTION_DAYS,
+  pickingAnalysis,
   bestPickingWindow,
   pickingOutlook,
   pickingPill,
@@ -130,5 +132,100 @@ describe('pickingOutlook', () => {
     const peakDay = out.reduce((a, b) => (b.score > a.score ? b : a))
     expect(peakDay.score).toBeGreaterThan(out[0].score)
     expect(peakDay.tag).toBe('flush-peak')
+  })
+})
+
+describe('pickingAnalysis', () => {
+  it('adjusts the dry-soil threshold for evapotranspiration', () => {
+    // Four isolated 4,8 mm showers (19,2 mm) then a 19,8 mm two-day front
+    // ending 11 days before today. Raw antecedent is under 20 mm, so the old
+    // rule demanded 25 mm and dismissed the front. In September the ground
+    // is still moist (19,2 / 0,7 = 27), so 15 mm is enough.
+    const build = (start: string, temp: number) => {
+      const obs = dry(43, temp)
+      for (const i of [18, 21, 24, 27]) obs[i] = [4.8, temp]
+      obs[31] = [9.9, temp]
+      obs[32] = [9.9, temp]
+      return series(start, obs, dry(9, temp))
+    }
+    const sept = pickingOutlook(build('2026-08-01', 12), 'kantarelli')!
+    expect(sept[0].tag).toBe('flush-peak')
+    expect(sept[0].score).toBeGreaterThan(0.4)
+    // Same layout in July (evapotranspiration factor 1): the front is ignored.
+    const july = pickingOutlook(build('2026-06-01', 16), 'kantarelli')!
+    expect(july[0].tag).toBe('no-recent-rain')
+    expect(july[0].score).toBeLessThan(0.2)
+  })
+
+  it('exposes rain events with species peak windows and a projection tail', () => {
+    const obs = dry(35, 16)
+    obs[22] = [14, 15]
+    obs[23] = [16, 15]
+    const fc = dry(9, 16)
+    fc[3] = [15, 15]
+    fc[4] = [15, 15]
+    const d = series('2026-07-10', obs, fc)
+    const k = pickingAnalysis(d, 'kantarelli')!
+    const s = pickingAnalysis(d, 'suppilovahvero')!
+
+    expect(k.todayIdx).toBe(35)
+    expect(k.forecastEndIdx).toBe(43)
+    expect(k.events).toHaveLength(2)
+    expect(k.events[0]).toMatchObject({
+      start: '2026-08-01',
+      soakStart: '2026-08-01',
+      end: '2026-08-02',
+      mm: 30,
+      forecast: false,
+      firstFruit: '2026-08-08',
+      peakStart: '2026-08-13',
+      peakEnd: '2026-08-19',
+      fadeEnd: '2026-08-28'
+    })
+    expect(s.events[0].peakStart).toBe('2026-08-16')
+    expect(s.events[0].peakEnd).toBe('2026-08-26')
+    // The forecast event is flagged and peaks after the forecast ends.
+    expect(k.events[1].forecast).toBe(true)
+    expect(k.events[1].end).toBe('2026-08-18')
+    expect(k.events[1].peakStart > k.series[k.forecastEndIdx].date).toBe(true)
+
+    // Projection: PROJECTION_DAYS synthesized days, no rain, persistence
+    // temperature (mean of the last five forecast days), decaying trust.
+    expect(k.series).toHaveLength(35 + 9 + PROJECTION_DAYS)
+    expect(k.days).toHaveLength(9 + PROJECTION_DAYS)
+    const tail = k.series.slice(44)
+    expect(tail.every((x) => x.source === 'projection' && x.rainMm === 0 && x.meanTempC === 15.8)).toBe(true)
+    const projected = k.days.filter((x) => x.projected)
+    expect(projected).toHaveLength(PROJECTION_DAYS)
+    const lastLive = k.days[8]
+    expect(projected.every((x) => x.confidence < lastLive.confidence)).toBe(true)
+    for (let i = 1; i < projected.length; i++)
+      expect(projected[i].confidence).toBeLessThanOrEqual(projected[i - 1].confidence)
+    // The forecast rain's flush shows up in the tail.
+    const peakDay = k.days.find((x) => x.date === '2026-08-29')!
+    expect(peakDay.tag).toBe('flush-peak')
+    expect(peakDay.driverEvent).toBe(1)
+
+    // pickingOutlook is the non-projected slice.
+    const outlook = pickingOutlook(d, 'kantarelli')!
+    expect(outlook.map((x) => [x.date, x.score, x.tag])).toEqual(
+      k.days.filter((x) => !x.projected).map((x) => [x.date, x.score, x.tag])
+    )
+    expect(outlook.some((x) => x.projected)).toBe(false)
+  })
+
+  it('calls a fading flush at the season start an early flush', () => {
+    // 30 mm event 26 days before today, showers keeping the ground moist.
+    const build = (start: string, temp: number) => {
+      const obs = dry(35, temp)
+      obs[8] = [15, temp]
+      obs[9] = [15, temp]
+      for (const i of [20, 24, 28, 32]) obs[i] = [5, temp]
+      return series(start, obs, dry(9, temp))
+    }
+    // Late August: suppilovahvero's curve is still climbing.
+    expect(pickingOutlook(build('2026-07-24', 14), 'suppilovahvero')![0].tag).toBe('early-flush-fading')
+    // Late October: the curve is flat, so it is a plain fading flush.
+    expect(pickingOutlook(build('2026-09-23', 5), 'suppilovahvero')![0].tag).toBe('flush-fading')
   })
 })

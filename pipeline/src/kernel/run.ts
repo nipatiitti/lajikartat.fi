@@ -8,12 +8,16 @@ import { applyNameJoin } from './name-join'
 import { reprojectPoint4326to3067 } from './reproject'
 import { buildRegionMask } from './sources/boundary'
 import { createMmlClient } from './sources/mml'
+import { runRaster } from './raster/run-raster'
+import { createLukeSource } from './raster/sources/luke'
 import { TileContextProvider, warmTiles } from './tile-context'
 import type { CandidateFeature } from './types'
 
-const [speciesId, regionId] = process.argv.slice(2)
+const args = process.argv.slice(2)
+const flags = new Set(args.filter((a) => a.startsWith('--')))
+const [speciesId, regionId] = args.filter((a) => !a.startsWith('--'))
 if (!speciesId || !regionId) {
-  console.error('usage: tsx src/kernel/run.ts <species> <region>')
+  console.error('usage: tsx src/kernel/run.ts <species> <region> [--debug] [--only=ix,iy;ix,iy]')
   process.exit(1)
 }
 
@@ -34,12 +38,25 @@ if (!MML_API_KEY) {
   process.exit(1)
 }
 
-if (species.kind !== 'feature') {
-  console.error(`species "${speciesId}" is a ${species.kind} pipeline — only feature is supported in the v1 loader`)
-  process.exit(1)
+const mml = createMmlClient(MML_API_KEY)
+
+if (species.kind === 'raster') {
+  const only = args
+    .find((a) => a.startsWith('--only='))
+    ?.slice('--only='.length)
+    .split(';')
+  const luke = createLukeSource({ localDir: process.env.LUKE_LOCAL_DIR })
+  const { tiles, scored, outDir } = await runRaster(
+    species,
+    region,
+    { mml, luke },
+    { debug: flags.has('--debug'), only }
+  )
+  console.log(`\nScored ${scored} forest cells over ${tiles} tiles → ${outDir}`)
+  console.log(`\nNext:\n  pnpm --filter @lajikartat/pipeline calibrate ${speciesId} ${regionId}`)
+  process.exit(0)
 }
 
-const mml = createMmlClient(MML_API_KEY)
 const mask = buildRegionMask(regionId, region.bbox3067)
 
 // Phase 1 — acquire the small candidate layer region-wide, extract candidates.

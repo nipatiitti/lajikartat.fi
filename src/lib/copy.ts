@@ -28,6 +28,7 @@ export const FACTOR_SHORT_LABELS: Record<string, string> = {
   M2: 'Kasvupaikka',
   M3: 'Ikä',
   M4: 'Valoisuus',
+  M5: 'Kosteus',
   M6: 'Reunat',
   M7: 'Maaperä',
   M9: 'Syrjäisyys'
@@ -52,6 +53,53 @@ export const COPY = {
   openInMaps: 'Avaa Google Mapsissa',
   share: 'Jaa',
   copied: 'Kopioitu'
+} as const
+
+/** Green go, amber maybe, gray nothing: the one quality scale for chips. */
+export const TONE_CLASSES: Record<'green' | 'amber' | 'gray', string> = {
+  green: 'bg-green-100 text-green-800',
+  amber: 'bg-amber-100 text-amber-800',
+  gray: 'bg-gray-100 text-gray-700'
+}
+
+export const CALENDAR_COPY = {
+  title: 'Sienikalenteri',
+  subtitle: 'Sateet, lämpötila ja arvioitu sato',
+  back: 'Takaisin karttaan',
+  openCalendar: 'Avaa sienikalenteri',
+  spotLocation: 'kohteen sijainti',
+  ownLocation: 'Oma sijainti',
+  locate: 'Oma sijainti (GPS)',
+  locating: 'Haetaan sijaintia…',
+  locateFailed: 'Sijaintia ei saatu. Salli sijainnin käyttö tai valitse paikkakunta.',
+  place: 'Paikka',
+  why: 'Miksi',
+  observed: 'havainnot',
+  forecast: 'ennuste',
+  projection: 'arvio ilman lisäsadetta',
+  today: 'tänään',
+  forecastEnd: 'ennuste päättyy',
+  rain: 'Sade',
+  temp: 'Lämpö',
+  frost: 'yöpakkanen',
+  trigger: 'satoa käynnistävä sade',
+  triggerColors: 'oma väri joka sateelle',
+  peakWindow: 'satohuippu',
+  scoreGood: 'hyvä päivä',
+  scoreOk: 'kohtalainen',
+  scorePoor: 'heikko',
+  loading: 'Haetaan säätietoja…',
+  unavailable: 'Säätietoja ei saatu Ilmatieteen laitokselta. Yritä hetken päästä uudelleen.',
+  attribution: 'Ilmatieteen laitos, havainnot ja ennuste',
+  caveat:
+    'Arvio perustuu sademalliin, ei havaintoihin sienistä. Ennusteen jälkeinen jakso olettaa, ettei lisää sadetta tule. ' +
+    'Sesonkiajat on viritetty Etelä-Suomeen. Maastossa tilanne voi olla toinen.',
+  howToRead:
+    'Kunnon sade käynnistää sadon. Kantarelli nousee noin viikon päästä ja on parhaimmillaan 11-17 päivää sateesta. ' +
+    'Suppilovahvero on hitaampi: huippu 2-3 viikkoa sateesta, ja se kestää pakkasta.',
+  landerCardTitle: 'Sienikalenteri',
+  landerCardText:
+    'Milloin kantarellia ja suppilovahveroa kannattaa lähteä hakemaan. Sateista laskettu satoarvio Pirkkalan seudulle.'
 } as const
 
 // Data sources behind the candidate layers. CC BY 4.0 attribution is a

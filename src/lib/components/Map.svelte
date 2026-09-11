@@ -13,9 +13,15 @@
     LAYER_FILL,
     LAYER_HEAT,
     LAYER_LINE,
+    LAYER_RELIEF,
     lineOpacity,
+    rasterLayers,
+    rasterSources,
+    reliefColor,
+    reliefOpacity,
     SOURCE_CANDIDATES,
     SOURCE_CENTROIDS,
+    SOURCE_RELIEF,
     type CandidatePaintOptions
   } from '$lib/map/layers'
   import type { Camera } from '$lib/map/url'
@@ -53,21 +59,73 @@
     if (id) map.setFeatureState({ source: SOURCE_CANDIDATES, id }, { hover: true })
   }
 
+  // Two layer families share the map: vector candidates (tappable) and the
+  // raster suitability surface. Only one is mounted at a time; switching
+  // species across families tears the other down first.
+  function removeCandidateLayers() {
+    if (!map) return
+    for (const id of [LAYER_HEAT, LAYER_FILL, LAYER_LINE, LAYER_RELIEF]) if (map.getLayer(id)) map.removeLayer(id)
+    for (const id of [SOURCE_CANDIDATES, SOURCE_CENTROIDS, SOURCE_RELIEF]) if (map.getSource(id)) map.removeSource(id)
+  }
+
   function ensureCandidateLayers() {
-    if (!map || map.getSource(SOURCE_CANDIDATES)) return
+    if (!map) return
+    if (config.render === 'raster') {
+      if (map.getSource(SOURCE_RELIEF)) return
+      const tiles = mapState.tiles
+      if (!tiles) return
+      removeCandidateLayers()
+      for (const [id, spec] of Object.entries(rasterSources(tiles))) map.addSource(id, spec)
+      for (const layer of rasterLayers(paintOptions, mapState.filter.minComposite)) map.addLayer(layer)
+      return
+    }
+    if (map.getSource(SOURCE_CANDIDATES)) return
+    removeCandidateLayers()
     const sources = candidateSources(mapState.geojson, mapState.centroids)
     for (const [id, spec] of Object.entries(sources)) map.addSource(id, spec)
     for (const layer of candidateLayers(paintOptions)) map.addLayer(layer)
     applyFilter()
     reapplySelection()
+    bindTapHandlers()
   }
 
   function applyFilter() {
-    if (!map?.getLayer(LAYER_FILL)) return
+    if (!map) return
+    if (map.getLayer(LAYER_RELIEF)) {
+      map.setPaintProperty(
+        LAYER_RELIEF,
+        'color-relief-color',
+        reliefColor(paintOptions.ramp, mapState.filter.minComposite)
+      )
+      return
+    }
+    if (!map.getLayer(LAYER_FILL)) return
     const expr = filterExpression(mapState.filter)
     map.setFilter(LAYER_FILL, expr)
     map.setFilter(LAYER_LINE, expr)
     map.setFilter(LAYER_HEAT, expr)
+  }
+
+  // Delegated layer events are bound once the fill layer exists (binding them
+  // for a missing layer makes MapLibre log an error on every pointer event).
+  let tapHandlersBound = false
+  function bindTapHandlers() {
+    const m = map
+    if (!m || tapHandlersBound) return
+    tapHandlersBound = true
+    m.on('click', LAYER_FILL, (e) => {
+      const f = e.features?.[0]
+      mapState.select(f ? String(f.properties?.id) : null)
+    })
+    m.on('mousemove', LAYER_FILL, (e) => {
+      m.getCanvas().style.cursor = 'pointer'
+      const f = e.features?.[0]
+      setHover(f ? String(f.properties?.id) : null)
+    })
+    m.on('mouseleave', LAYER_FILL, () => {
+      m.getCanvas().style.cursor = ''
+      setHover(null)
+    })
   }
 
   // Feature-state does not survive source re-creation (basemap switches).
@@ -156,19 +214,6 @@
         const c = m.getCenter()
         mapState.camera = { zoom: m.getZoom(), lat: c.lat, lng: c.lng }
       })
-      m.on('click', LAYER_FILL, (e) => {
-        const f = e.features?.[0]
-        mapState.select(f ? String(f.properties?.id) : null)
-      })
-      m.on('mousemove', LAYER_FILL, (e) => {
-        m.getCanvas().style.cursor = 'pointer'
-        const f = e.features?.[0]
-        setHover(f ? String(f.properties?.id) : null)
-      })
-      m.on('mouseleave', LAYER_FILL, () => {
-        m.getCanvas().style.cursor = ''
-        setHover(null)
-      })
     })()
 
     return () => {
@@ -179,6 +224,7 @@
       ready = false
       hoveredId = null
       prevSelected = null
+      tapHandlersBound = false
     }
   })
 
@@ -186,7 +232,7 @@
   $effect(() => {
     const polygons = mapState.geojson
     const centroids = mapState.centroids
-    if (!ready || !map) return
+    if (!ready || !map || config.render === 'raster') return
     const polySource = map.getSource(SOURCE_CANDIDATES) as GeoJSONSource | undefined
     if (!polySource) {
       ensureCandidateLayers()
@@ -195,6 +241,16 @@
     if (polygons) polySource.setData(polygons)
     const centroidSource = map.getSource(SOURCE_CENTROIDS) as GeoJSONSource | undefined
     if (centroidSource && centroids) centroidSource.setData(centroids)
+  })
+
+  // Raster: a new tile descriptor (species switch) remounts the source — a
+  // raster-dem source cannot swap its tiles in place.
+  $effect(() => {
+    const tiles = mapState.tiles
+    if (!ready || !map || config.render !== 'raster') return
+    if (map.getSource(SOURCE_RELIEF)) removeCandidateLayers()
+    // Paint and filter are read inside; they must not remount the source.
+    if (tiles) untrack(() => ensureCandidateLayers())
   })
 
   // Filter changes are cheap setFilter calls — never re-parse the FeatureCollection.
@@ -207,7 +263,12 @@
   // Paint: user opacity / layer toggle / species render mode.
   $effect(() => {
     const opts = paintOptions
-    if (!ready || !map?.getLayer(LAYER_FILL)) return
+    if (!ready || !map) return
+    if (map.getLayer(LAYER_RELIEF)) {
+      map.setPaintProperty(LAYER_RELIEF, 'color-relief-opacity', reliefOpacity(opts))
+      return
+    }
+    if (!map.getLayer(LAYER_FILL)) return
     map.setPaintProperty(LAYER_FILL, 'fill-opacity', fillOpacity(opts))
     map.setPaintProperty(LAYER_LINE, 'line-opacity', lineOpacity(opts))
     map.setPaintProperty(LAYER_HEAT, 'heatmap-opacity', heatmapOpacity(opts))
@@ -240,11 +301,23 @@
     const m = map
     void resolveBasemapStyle(id).then((next) => {
       if (!m.getContainer().isConnected) return
+      const raster = config.render === 'raster'
+      const tiles = mapState.tiles
       m.setStyle(next, {
         transformStyle: (_prev, incoming) => ({
           ...incoming,
-          sources: { ...incoming.sources, ...candidateSources(mapState.geojson, mapState.centroids) },
-          layers: [...incoming.layers, ...candidateLayers(paintOptions)]
+          sources: {
+            ...incoming.sources,
+            ...(raster ? (tiles ? rasterSources(tiles) : {}) : candidateSources(mapState.geojson, mapState.centroids))
+          },
+          layers: [
+            ...incoming.layers,
+            ...(raster
+              ? tiles
+                ? rasterLayers(paintOptions, mapState.filter.minComposite)
+                : []
+              : candidateLayers(paintOptions))
+          ]
         })
       })
       m.once('idle', () => {

@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "wrangler types --check && vite build",
+    "build": "rm -rf .svelte-kit/cloudflare && wrangler types --check && vite build",
     "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
     "prepare": "svelte-kit sync || echo ''",
-    "check": "wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "prettier --check .",
     "format": "prettier --write .",
@@ -18,11 +18,12 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "data:publish:local": "wrangler r2 object put lajikartat-geometry/ahven/pirkanmaa/v1.geojson --file=pipeline/out/ahven-pirkanmaa.geojson --local",
-    "data:publish:local:chanterelle": "wrangler r2 object put lajikartat-geometry/kantarelli/pirkkala/v1.geojson --file=pipeline/out/kantarelli-pirkkala.geojson --local && wrangler r2 object put lajikartat-geometry/kantarelli/pirkkala/v1.centroids.geojson --file=pipeline/out/kantarelli-pirkkala.centroids.geojson --local && wrangler r2 object put lajikartat-geometry/suppilovahvero/pirkkala/v1.geojson --file=pipeline/out/suppilovahvero-pirkkala.geojson --local && wrangler r2 object put lajikartat-geometry/suppilovahvero/pirkkala/v1.centroids.geojson --file=pipeline/out/suppilovahvero-pirkkala.centroids.geojson --local"
+    "data:publish:local:chanterelle": "wrangler r2 object put lajikartat-geometry/tiles/kantarelli/pirkanmaa/v2/raster.pmtiles --file=pipeline/out/raster/kantarelli/pirkanmaa/raster.pmtiles --local && wrangler r2 object put lajikartat-geometry/tiles/suppilovahvero/pirkanmaa/v2/raster.pmtiles --file=pipeline/out/raster/suppilovahvero/pirkanmaa/raster.pmtiles --local && wrangler d1 execute DB --local --file=pipeline/out/kantarelli-pirkanmaa.dataset.sql && wrangler d1 execute DB --local --file=pipeline/out/suppilovahvero-pirkanmaa.dataset.sql",
+    "pipeline": "pnpm --filter @lajikartat/pipeline"
   },
   "devDependencies": {
-    "@sveltejs/adapter-cloudflare": "next",
-    "@sveltejs/kit": "next",
+    "@sveltejs/adapter-cloudflare": "8.0.0-next.0",
+    "@sveltejs/kit": "3.0.0-next.4",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.3.0",
     "@types/geojson": "^7946.0.16",
@@ -41,6 +42,7 @@
   },
   "dependencies": {
     "@turf/turf": "^7.3.5",
-    "maplibre-gl": "^5.24.0"
+    "maplibre-gl": "^5.24.0",
+    "pmtiles": "^4.5.0"
   }
 }

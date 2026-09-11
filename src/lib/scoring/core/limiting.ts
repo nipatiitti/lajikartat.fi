@@ -4,6 +4,9 @@ import { buildWhyBreakdown } from './why'
 
 const ORDER: readonly Confidence[] = ['low', 'med', 'high']
 const rank = (c: Confidence): number => ORDER.indexOf(c)
+/** Numeric confidence rank: 0 low, 1 med, 2 high. */
+export const confidenceRank = rank
+export const CONFIDENCE_BY_RANK = ORDER
 
 export interface LimitingFactor {
   id: string
@@ -34,12 +37,65 @@ export interface LimitingOptions {
   vetoes?: LimitingFactor[]
 }
 
+export const DEFAULT_MODULATOR_BAND: [number, number] = [0.7, 1.3]
+
 /** Map a modulator sub-score (0→1, 0.5 neutral) onto its multiplier band. */
-function multiplierFor(subScore: number, band: [number, number]): number {
+export function multiplierFor(subScore: number, band: [number, number]): number {
   const [lo, hi] = band
   const s = clamp(subScore)
   // Piecewise-linear, continuous at 0.5: s=0→lo, s=0.5→1, s=1→hi.
   return s >= 0.5 ? 1 + (hi - 1) * (s - 0.5) * 2 : lo + (1 - lo) * (s * 2)
+}
+
+/**
+ * Numeric core of the limiting-factor combination, shared with the per-cell
+ * raster scorers. Sub-scores < 0 (or NaN) mean "unknown" and drop out of the
+ * exponent sum; a veto fires when `vetoFired` is true. Returns the composite.
+ */
+export function compositeNumeric(
+  hard: ArrayLike<number>,
+  weights: ArrayLike<number>,
+  modulators: ArrayLike<number>,
+  bands: ReadonlyArray<[number, number]>,
+  vetoFired: boolean
+): number {
+  if (vetoFired) return 0
+  let weightSum = 0
+  for (let i = 0; i < hard.length; i++) if (hard[i] >= 0) weightSum += weights[i]
+  if (weightSum <= 0) return 0
+  let hardScore = 1
+  for (let i = 0; i < hard.length; i++) {
+    const s = hard[i]
+    if (s >= 0) hardScore *= Math.pow(s, weights[i] / weightSum)
+  }
+  let multiplier = 1
+  let maxMultiplier = 1
+  for (let i = 0; i < modulators.length; i++) {
+    const s = modulators[i]
+    if (!(s >= 0)) continue
+    const band = bands[i] ?? DEFAULT_MODULATOR_BAND
+    multiplier *= multiplierFor(s, band)
+    maxMultiplier *= Math.max(1, band[1])
+  }
+  return clamp((hardScore * multiplier) / maxMultiplier)
+}
+
+/**
+ * Numeric confidence: minimum rank among available hard filters (rank < 0 =
+ * missing), capped at "med" (1) with one missing, "low" (0) with two or more.
+ */
+export function confidenceNumeric(hardRanks: ArrayLike<number>): number {
+  let missing = 0
+  let r = Infinity
+  for (let i = 0; i < hardRanks.length; i++) {
+    const c = hardRanks[i]
+    if (c < 0) missing++
+    else if (c < r) r = c
+  }
+  if (r === Infinity) r = 0
+  if (missing >= 1) r = Math.min(r, 1)
+  if (missing >= 2) r = 0
+  return r
 }
 
 /**
@@ -64,25 +120,19 @@ export function combineLimiting(
 ): CompositeResult {
   const vetoes = options.vetoes ?? []
 
-  const availHard = hard.filter((f) => f.result.subScore !== null)
-  const weightSum = availHard.reduce((s, f) => s + (f.weight ?? 1), 0)
-  const hardScore =
-    availHard.length > 0 && weightSum > 0
-      ? availHard.reduce((p, f) => p * Math.pow(f.result.subScore as number, (f.weight ?? 1) / weightSum), 1)
-      : 0
-
-  let multiplier = 1
-  let maxMultiplier = 1
-  for (const m of modulators) {
-    if (m.result.subScore === null) continue
-    const band = m.band ?? [0.7, 1.3]
-    multiplier *= multiplierFor(m.result.subScore, band)
-    maxMultiplier *= Math.max(1, band[1])
-  }
-
+  const hardScores = hard.map((f) => f.result.subScore ?? -1)
+  const hardWeights = hard.map((f) => f.weight ?? 1)
+  const weightSum = hard.reduce((s, f, i) => s + (hardScores[i] >= 0 ? hardWeights[i] : 0), 0)
   const vetoFired = vetoes.some((v) => v.result.subScore === 0)
-  const composite = vetoFired ? 0 : clamp((hardScore * multiplier) / maxMultiplier)
-  const confidence = hardConfidence(hard)
+  const composite = compositeNumeric(
+    hardScores,
+    hardWeights,
+    modulators.map((m) => m.result.subScore ?? -1),
+    modulators.map((m) => m.band ?? DEFAULT_MODULATOR_BAND),
+    vetoFired
+  )
+  const confidence =
+    ORDER[confidenceNumeric(hard.map((f) => (f.result.subScore === null ? -1 : rank(f.result.confidence))))]
 
   const toWhy = (f: LimitingFactor, weight: number): WhyFactor => ({
     id: f.id,
@@ -96,7 +146,7 @@ export function combineLimiting(
   // the why-panel bars); modulators and vetoes are secondary and shown at 0. A
   // fired veto (sub-score 0) lands in topNegatives via the generic ≤0.4 rule.
   const whyFactors: WhyFactor[] = [
-    ...hard.map((f) => toWhy(f, f.result.subScore !== null && weightSum > 0 ? (f.weight ?? 1) / weightSum : 0)),
+    ...hard.map((f, i) => toWhy(f, hardScores[i] >= 0 && weightSum > 0 ? hardWeights[i] / weightSum : 0)),
     ...modulators.map((f) => toWhy(f, 0)),
     ...vetoes.map((f) => toWhy(f, 0))
   ]
@@ -108,15 +158,4 @@ export function combineLimiting(
   }
 
   return { composite, confidence, why, factors }
-}
-
-// Confidence is the minimum among available hard filters, lowered for each hard
-// filter we had no data for (mirrors the weighted-sum model's behaviour).
-function hardConfidence(hard: LimitingFactor[]): Confidence {
-  const avail = hard.filter((f) => f.result.subScore !== null)
-  const missing = hard.length - avail.length
-  let r = avail.length > 0 ? Math.min(...avail.map((f) => rank(f.result.confidence))) : 0
-  if (missing >= 1) r = Math.min(r, 1) // one missing hard filter caps at "med"
-  if (missing >= 2) r = 0 // two or more missing → "low"
-  return ORDER[r]
 }

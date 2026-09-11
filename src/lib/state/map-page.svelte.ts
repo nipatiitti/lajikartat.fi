@@ -2,6 +2,7 @@ import type { FeatureCollection, Geometry, Position } from 'geojson'
 import { DEFAULT_BASEMAP, type BasemapId } from '$lib/map/basemaps'
 import type { CandidateFilter, CandidateProps } from '$lib/map/types'
 import type { SpeciesRenderConfig } from '$lib/species/registry'
+import type { SpeciesTileJson } from '../../routes/tiles/[species].json/+server'
 
 export interface MapController {
   flyTo(id: string): void
@@ -28,6 +29,9 @@ export interface LayerSettings {
 export class MapPageState {
   geojson = $state<FeatureCollection | null>(null)
   centroids = $state<FeatureCollection | null>(null)
+  /** Raster species: the tile descriptor the map mounts as a raster-dem source. */
+  tiles = $state<SpeciesTileJson | null>(null)
+  render = $state<SpeciesRenderConfig['render']>('polygon')
   loadError = $state(false)
   filter = $state<CandidateFilter>({ minComposite: 0 })
   selectedId = $state<string | null>(null)
@@ -39,6 +43,11 @@ export class MapPageState {
 
   #map: MapController | null = null
   #loadToken = 0
+
+  /** Data for the current species has arrived (blob or tile descriptor). */
+  ready = $derived(this.render === 'raster' ? this.tiles !== null : this.geojson !== null)
+  /** Region label from the live dataset when the species publishes one. */
+  regionLabel = $derived<string | null>(this.tiles?.regionLabel ?? null)
 
   features = $derived<CandidateProps[]>(
     this.geojson ? this.geojson.features.map((f) => f.properties as unknown as CandidateProps) : []
@@ -83,8 +92,24 @@ export class MapPageState {
     const token = ++this.#loadToken
     this.geojson = null
     this.centroids = null
+    this.tiles = null
+    this.render = config.render
     this.loadError = false
     this.selectedId = null
+
+    if (config.render === 'raster') {
+      fetch(config.tilesUrl)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((data) => {
+          if (token === this.#loadToken) this.tiles = data as SpeciesTileJson
+        })
+        .catch(() => {
+          if (token === this.#loadToken) this.loadError = true
+        })
+      // A raster surface has no spots: a shared ?kohde= cannot resolve.
+      this.pendingKohde = null
+      return
+    }
 
     fetch(config.geometryUrl)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))

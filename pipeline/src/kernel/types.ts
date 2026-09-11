@@ -9,9 +9,10 @@ import type {
   Polygon
 } from 'geojson'
 import type { CompositeResult } from '@scoring'
+import type { TileRef } from './config'
 
 export type Confidence = 'high' | 'med' | 'low'
-export type SourceId = 'mml' | 'gtk' | 'syke' | 'corine' | 'metsakeskus'
+export type SourceId = 'mml' | 'gtk' | 'syke' | 'corine' | 'metsakeskus' | 'luke'
 export type LayerGeometry = 'polygon' | 'line' | 'point' | 'raster'
 
 /** A logical layer a species needs, decoupled from the live source schema. */
@@ -31,6 +32,9 @@ export interface LayerSpec {
    *   the disk cache (e.g. tieviiva → tracks vs car roads by `kohdeluokka`).
    */
   params?: Record<string, string>
+  /** Raster pipelines: skip silently when the tile has no data for this layer
+   * (e.g. GTK soil outside the cached region) instead of warning. */
+  optional?: boolean
 }
 
 /** All acquired layers for a run, keyed by LayerSpec.key, reprojected to 4326. */
@@ -114,20 +118,64 @@ export interface FeatureSpecies extends SpeciesBase {
   render: { type: 'vector'; colorBy: string }
 }
 
-export interface GridCell {
-  lng: number
-  lat: number
+/** A national raster theme a raster species samples (Luke MVMI / TWI). */
+export interface RasterLayerSpec {
+  key: string
+  source: 'luke'
+  product: 'mvmi' | 'twi'
+  /** MVMI theme file stem (`ika`, `ppa`, …); ignored for `twi`. */
+  theme: string
 }
 
+/** A 10 km scoring tile snapped to the 16 m MVMI lattice (see raster/lattice.ts). */
+export interface RasterTileRef {
+  ix: number
+  iy: number
+  /** Lattice-snapped EPSG:3067 bbox; tiles never overlap. */
+  bbox3067: [number, number, number, number]
+  /** Cells across / down (625 for a full tile). */
+  width: number
+  height: number
+  /** The un-snapped vector tile whose bbox keys the MML disk cache. */
+  vectorRef: TileRef
+}
+
+/**
+ * Per-tile raster context: national raster windows plus rasterised vector
+ * layers, all row-major (row 0 = north) over `tile.width × tile.height`.
+ */
 export interface RasterContext {
-  sample(layerKey: string, lng: number, lat: number): number | string | null
+  tile: RasterTileRef
+  /** Raw raster window for a RasterLayerSpec key, or null when unavailable. */
+  band(key: string): Uint16Array | Int16Array | null
+  /** Nodata value(s) of that raster. */
+  bandNodata(key: string): readonly number[]
+  /** Was this vector layer rasterised for the tile? */
+  hasLayer(layerKey: string): boolean
+  /** Euclidean distance (m) from each cell centre to the nearest feature of a line/polygon layer, capped at `capM`. */
+  distanceTo(layerKey: string, capM: number): Float32Array | null
+  /** Number of features (by centre point) within a square of half-width `radiusM` around each cell. */
+  countWithin(layerKey: string, radiusM: number): Uint16Array | null
+  /** Per-cell class code of a polygon layer (0 = none) with the code → class name table. */
+  classCode(layerKey: string, classField: string): { codes: Uint8Array; classes: string[] } | null
+  /** Distance (m) to the nearest stand boundary derived from MVMI discontinuities, capped. */
+  standEdgeDistance(capM: number): Float32Array | null
 }
 
-/** Continuous-raster species (chanterelle): a suitability surface. Sketch-only. */
+export interface RasterTileResult {
+  /** Composite 0..1, NaN outside forest / no result. */
+  composite: Float32Array
+  /** 0 nodata, 1 low, 2 med, 3 high. */
+  confidence: Uint8Array
+  /** Per-factor sub-scores (NaN unknown) for calibration and debugging. */
+  factors: Record<string, Float32Array>
+}
+
+/** Continuous-raster species (chanterelle): a suitability surface per 16 m cell. */
 export interface RasterSpecies extends SpeciesBase {
   kind: 'raster'
-  grid: { cellSizeM: number }
-  scoreCell(cell: GridCell, ctx: RasterContext): number
+  rasters: RasterLayerSpec[]
+  scoreTile(ctx: RasterContext): RasterTileResult
   render: { type: 'raster'; ramp: string }
 }
 

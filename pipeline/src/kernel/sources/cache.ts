@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const CACHE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../.cache')
+export const CACHE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../.cache')
 
 export interface CacheKey {
   source: string

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DATA_SOURCES } from '$lib/copy'
+  import { CALENDAR_COPY, DATA_SOURCES } from '$lib/copy'
   import { SPECIES_RENDER, speciesIds } from '$lib/species/registry'
 </script>
 
@@ -41,6 +41,21 @@
           </li>
         {/each}
       </ul>
+    </section>
+
+    <section class="flex flex-col gap-3" aria-label={CALENDAR_COPY.title}>
+      <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">{CALENDAR_COPY.title}</h2>
+      <a
+        href="/sienikalenteri"
+        class="flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow"
+      >
+        <span class="flex items-baseline justify-between gap-2">
+          <span class="font-semibold">{CALENDAR_COPY.landerCardTitle}</span>
+          <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">Pirkkala</span>
+        </span>
+        <span class="text-sm text-gray-600">{CALENDAR_COPY.landerCardText}</span>
+        <span class="pt-1 text-sm font-medium text-blue-600">{CALENDAR_COPY.openCalendar} →</span>
+      </a>
     </section>
 
     <section class="flex flex-col gap-3" aria-label="Näin luet karttaa">

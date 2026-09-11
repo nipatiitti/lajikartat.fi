@@ -1,5 +1,7 @@
 export interface RegionPreset {
   id: string
+  /** Display name for the frontend ("Pirkkala", "Pirkanmaa", "Suomi"). */
+  label: string
   /**
    * Rough region bbox in EPSG:3067 [minX, minY, maxX, maxY], used to enumerate
    * acquisition tiles. The precise clip mask comes from the maakunta boundary
@@ -13,6 +15,7 @@ export interface RegionPreset {
 export const REGIONS: Record<string, RegionPreset> = {
   pirkanmaa: {
     id: 'pirkanmaa',
+    label: 'Pirkanmaa',
     bbox3067: [283000, 6780000, 385000, 6900000]
   },
   // Chanterelle validation region: the Pirkkala forests (user-chosen corners
@@ -20,7 +23,17 @@ export const REGIONS: Record<string, RegionPreset> = {
   // Metsäkeskus stands — perch-scale, cheap cold run.
   pirkkala: {
     id: 'pirkkala',
+    label: 'Pirkkala',
     bbox3067: [320000, 6811000, 327000, 6819000]
+  },
+  // Whole country for the raster pipeline. The origin is chosen so the 10 km
+  // grid coincides with pirkanmaa's tiles (283000 = 53000 + 23·10000,
+  // 6780000 = 6600000 + 18·10000) → the cached MML tiles are reused, and it
+  // covers the full MVMI raster extent (57632..733472, 6602752..7778304).
+  finland: {
+    id: 'finland',
+    label: 'Suomi',
+    bbox3067: [53000, 6600000, 743000, 7780000]
   }
 }
 

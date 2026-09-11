@@ -1,5 +1,17 @@
 import type { FactorResult } from '../../core/types'
 import type { ChanterelleInput } from '../types'
+import { subgroupCode } from './m2-fertility'
+import { devClassCode } from './m3-maturity'
+
+/**
+ * Numeric core of the veto on codes (see DEV_CLASS_CODES / SUBGROUP_CODES):
+ * 0 = fired, 1 = passed, −1 = unknown (never fires).
+ */
+export function vetoCore(devClass: number, subgroup: number): number {
+  if (devClass === 0 || devClass === 1 || subgroup === 3) return 0
+  if (devClass < 0 && subgroup < 0) return -1
+  return 1
+}
 
 /**
  * V — hard vetoes (species/chantarelle.md §2). Only the conditions knowable
@@ -11,13 +23,13 @@ import type { ChanterelleInput } from '../types'
  * (unknown never vetoes).
  */
 export function vetoConditions(input: ChanterelleInput): FactorResult {
-  const fired: string[] = []
+  const v = vetoCore(devClassCode(input.devClass), subgroupCode(input.subgroup))
+  if (v < 0) return { subScore: null, confidence: 'low', drivers: [] }
+  if (v === 1) return { subScore: 1, confidence: 'high', drivers: [] }
 
+  const fired: string[] = []
   if (input.devClass === 'open') fired.push('tuore avohakkuuaukea')
   if (input.devClass === 'seedling') fired.push('taimikko')
   if (input.subgroup === 'openMire') fired.push('avosuo')
-
-  if (fired.length > 0) return { subScore: 0, confidence: 'high', drivers: fired }
-  if (input.devClass === null && input.subgroup === null) return { subScore: null, confidence: 'low', drivers: [] }
-  return { subScore: 1, confidence: 'high', drivers: [] }
+  return { subScore: 0, confidence: 'high', drivers: fired }
 }

@@ -50,15 +50,30 @@ export const candidateScore = sqliteTable(
 )
 
 // Tracks what is published per species/region/version for BOTH pipeline kinds,
-// including the R2 key of the vector geometry (feature) or raster tiles (raster).
-export const speciesDataset = sqliteTable('species_dataset', {
-  species: text('species').notNull(),
-  region: text('region').notNull(),
-  pipelineVersion: text('pipeline_version').notNull(),
-  kind: text('kind').notNull(), // 'feature' | 'raster'
-  r2Key: text('r2_key').notNull(),
-  publishedAt: integer('published_at', { mode: 'timestamp' }).notNull()
-})
+// including the R2 key of the vector geometry (feature / centroids) or the
+// raster PMTiles archive (raster-tiles, with its zoom range and bounds in meta).
+export const speciesDataset = sqliteTable(
+  'species_dataset',
+  {
+    species: text('species').notNull(),
+    region: text('region').notNull(),
+    pipelineVersion: text('pipeline_version').notNull(),
+    kind: text('kind').notNull(), // 'feature' | 'centroids' | 'raster-tiles'
+    r2Key: text('r2_key').notNull(),
+    publishedAt: integer('published_at', { mode: 'timestamp' }).notNull(),
+    /** raster-tiles: { bounds, minzoom, maxzoom, tileSize, regionLabel }. */
+    meta: text('meta', { mode: 'json' })
+  },
+  (t) => [index('dataset_species_kind_idx').on(t.species, t.kind)]
+)
+
+export interface RasterDatasetMeta {
+  bounds: [number, number, number, number]
+  minzoom: number
+  maxzoom: number
+  tileSize: number
+  regionLabel: string
+}
 
 export type Candidate = typeof candidate.$inferSelect
 export type CandidateScore = typeof candidateScore.$inferSelect
