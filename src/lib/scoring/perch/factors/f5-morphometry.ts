@@ -14,7 +14,7 @@ function areaBand(areaHa: number): number {
 /**
  * F5 — morphometry. Small favours the cannibal-giant dynamic; a deeper hole and
  * complex shoreline add refugia/cover. Depth is null at v1 (no Järvirajapinta
- * lookup yet) and simply nudges confidence down. (perch.md §F5)
+ * lookup yet) and simply nudges confidence down. (species/perch.md §F5)
  */
 export function f5Morphometry(input: PerchInput): FactorResult {
   if (input.areaHa === null) return { subScore: null, confidence: 'low', drivers: [] }

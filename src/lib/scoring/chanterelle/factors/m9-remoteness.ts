@@ -1,37 +1,19 @@
 import { clamp, logSaturate } from '../../core/math'
-import type { FactorResult } from '../../core/types'
-import type { ChanterelleInput } from '../types'
 
 /** Buildings within 500 m at which the settlement signal has halved (a hamlet, not a lone barn). */
-export const BUILDINGS_HALF = 4
-
-/** Numeric core of M9: min of the available signals; negative / NaN = unknown; −1 when both unknown. */
-export function m9Core(nearestCarRoadM: number, buildingsWithin500m: number): number {
-  let s = Infinity
-  if (nearestCarRoadM >= 0) s = Math.min(s, logSaturate(nearestCarRoadM, 2000))
-  if (buildingsWithin500m >= 0) s = Math.min(s, 1 / (1 + buildingsWithin500m / BUILDINGS_HALF))
-  return s === Infinity ? -1 : clamp(s)
-}
+const BUILDINGS_HALF = 4
+const CAR_ROAD_CAP_M = 2000
 
 /**
  * M9 — remoteness / picking pressure (MODULATOR, mild). Distance from car roads
  * and settlement → fresher, un-picked fruiting bodies on the day. Deliberately
  * mild (mycelium persists, spots renew) and CAR-road based so it doesn't cancel
- * M6's forest-track signal — a stand can hug an ajotie (good M6) while being far
- * from the paved network (good M9). (species/chantarelle.md §M9)
+ * M6's forest-track signal. Min of the available signals; negative / NaN =
+ * unknown; −1 when both unknown. (species/chanterelle.md §M9)
  */
-export function m9Remoteness(input: ChanterelleInput): FactorResult {
-  const subScore = m9Core(input.nearestCarRoadM ?? -1, input.buildingsWithin500m ?? -1)
-  if (subScore < 0) return { subScore: null, confidence: 'low', drivers: [] }
-
-  const drivers: string[] = []
-  if (input.nearestCarRoadM !== null) {
-    if (input.nearestCarRoadM > 1000) drivers.push(`${(input.nearestCarRoadM / 1000).toFixed(1)} km autotielle`)
-    else if (input.nearestCarRoadM < 150) drivers.push('aivan autotien vieressä, todennäköisesti kaluttu')
-  }
-  if (input.buildingsWithin500m !== null && input.buildingsWithin500m >= 3) {
-    drivers.push(`${input.buildingsWithin500m} rakennusta 500 m säteellä`)
-  }
-
-  return { subScore, confidence: 'high', drivers }
+export function m9Core(nearestCarRoadM: number, buildingsWithin500m: number): number {
+  let s = Infinity
+  if (nearestCarRoadM >= 0) s = Math.min(s, logSaturate(nearestCarRoadM, CAR_ROAD_CAP_M))
+  if (buildingsWithin500m >= 0) s = Math.min(s, 1 / (1 + buildingsWithin500m / BUILDINGS_HALF))
+  return s === Infinity ? -1 : clamp(s)
 }

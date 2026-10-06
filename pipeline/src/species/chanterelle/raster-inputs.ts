@@ -1,9 +1,17 @@
 import { allocGridInputs, type ChanterelleGridInputs } from '@scoring'
+import { MVMI, TWI } from '../../kernel/raster/lattice'
 import type { RasterContext } from '../../kernel/types'
 import { deriveDevClassCode, MVMI_DERIVE, subgroupFromPaatyyppi } from './mvmi-derive'
 
-const OUTSIDE = 32767
-const CLOUD = 32766
+/** GTK 1:200k surface-soil class attribute. */
+const SOIL_CLASS_FIELD = 'PINTAMAALAJI'
+const isPeat = (cls: string) => cls.toLowerCase().includes('turve')
+const isRock = (cls: string) => /kallio|rakka/.test(cls.toLowerCase())
+/** MVMI paatyyppi: 1 kangas, 2 korpi, 3 räme, 4 avosuo. */
+const PAATYYPPI_KANGAS = 1
+const PAATYYPPI_AVOSUO = 4
+/** kasvupaikka 7 = kalliomaa / hietikko. */
+const KASVUPAIKKA_ROCK = 7
 
 /** Bands → column inputs. Cells outside forest land (maaluokka ≠ 1) are invalid. */
 export function buildGridInputs(ctx: RasterContext): ChanterelleGridInputs {
@@ -30,22 +38,18 @@ export function buildGridInputs(ctx: RasterContext): ChanterelleGridInputs {
 
   const val = (b: ArrayLike<number>, i: number) => {
     const v = b[i]
-    return v === OUTSIDE || v === CLOUD ? NaN : v
+    return v === MVMI.nodataOutside || v === MVMI.nodataCloud ? NaN : v
   }
 
-  const track = ctx.distanceTo('tracks', 1000)
-  const ditch = ctx.distanceTo('ditches', 1000)
-  const edge = ctx.standEdgeDistance(1000)
-  const road = ctx.distanceTo('roads', 3000)
-  const buildings = ctx.countWithin('buildings', 500)
-  const soil = ctx.classCode('soil', 'PINTAMAALAJI')
-  const soilPeat = soil ? soil.classes.map((c) => (c.toLowerCase().includes('turve') ? 1 : 0)) : null
-  const soilRock = soil
-    ? soil.classes.map((c) => {
-        const l = c.toLowerCase()
-        return l.includes('kallio') || l.includes('rakka') ? 1 : 0
-      })
-    : null
+  const d = MVMI_DERIVE
+  const track = ctx.distanceTo('tracks', d.edgeCapM)
+  const ditch = ctx.distanceTo('ditches', d.edgeCapM)
+  const edge = ctx.standEdgeDistance(d.edgeCapM)
+  const road = ctx.distanceTo('roads', d.carRoadCapM)
+  const buildings = ctx.countWithin('buildings', d.buildingsRadiusM)
+  const soil = ctx.classCode('soil', SOIL_CLASS_FIELD)
+  const soilPeat = soil?.classes.map((c) => (isPeat(c) ? 1 : 0)) ?? null
+  const soilRock = soil?.classes.map((c) => (isRock(c) ? 1 : 0)) ?? null
 
   for (let i = 0; i < n; i++) {
     if (maaluokka[i] !== 1) continue // outside forest land → stays invalid
@@ -56,8 +60,8 @@ export function buildGridInputs(ctx: RasterContext): ChanterelleGridInputs {
     const s = val(kuusi, i)
     if (v > 0 && p === p && s === s) {
       // Species volumes are independent kNN estimates and can sum past the
-      // total (0,4 % of Pirkanmaa cells); normalise by whichever is larger so
-      // the shares stay a partition and "other" is not zeroed spuriously.
+      // total (0,4 % of cells); normalise by whichever is larger so the shares
+      // stay a partition and "other" is not zeroed spuriously.
       const total = Math.max(v, p + s)
       const pine = p / total
       const spruce = s / total
@@ -72,29 +76,27 @@ export function buildGridInputs(ctx: RasterContext): ChanterelleGridInputs {
     g.subgroupCode[i] = pt === pt ? subgroupFromPaatyyppi(pt) : -1
 
     const age = val(ika, i)
-    const h = val(hgt, i)
-    g.devClassCode[i] = deriveDevClassCode(age, h, v)
+    g.devClassCode[i] = deriveDevClassCode(age, val(hgt, i), v)
     g.meanAge[i] = age
     g.basalArea[i] = val(ppa, i)
     g.canopyPct[i] = val(cc, i)
-    if (twi) {
-      const t = twi[i]
-      g.twi[i] = t === -32768 ? NaN : t / MVMI_DERIVE.twiScale
-    }
+    if (twi) g.twi[i] = twi[i] === TWI.nodata ? NaN : twi[i] / d.twiScale
 
     if (track) g.nearestTrackM[i] = track[i]
     if (ditch) g.nearestDitchM[i] = ditch[i]
     if (edge) g.nearestStandEdgeM[i] = edge[i]
-    g.drained[i] = (pt === 2 || pt === 3) && ditch && ditch[i] <= MVMI_DERIVE.drainedDitchM ? 1 : 0
+    const peatland = pt > PAATYYPPI_KANGAS && pt < PAATYYPPI_AVOSUO
+    g.drained[i] = peatland && ditch && ditch[i] <= d.drainedDitchM ? 1 : 0
 
+    // Soil: GTK class where cached, else the MVMI site type as a coarse proxy.
     let peat = NaN
     let rock = NaN
     if (soil && soilPeat && soilRock && soil.codes[i] > 0) {
       peat = soilPeat[soil.codes[i]]
       rock = soilRock[soil.codes[i]]
     } else if (pt === pt) {
-      peat = pt >= 2 ? 1 : 0
-      rock = pt === 1 && k === 7 ? 1 : 0
+      peat = pt > PAATYYPPI_KANGAS ? 1 : 0
+      rock = pt === PAATYYPPI_KANGAS && k === KASVUPAIKKA_ROCK ? 1 : 0
     }
     g.peatFraction[i] = peat
     g.rockFraction[i] = rock

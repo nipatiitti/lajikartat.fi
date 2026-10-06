@@ -42,7 +42,11 @@ function* polygonRings(geom: Geometry | null): Generator<Ring[]> {
 }
 
 /** Mark every cell a line passes through (DDA with ≤ 1-cell steps → 8-connected, no gaps). */
-export function rasterizeLines(fc: FeatureCollection, grid: GridSpec, mask: Uint8Array = new Uint8Array(grid.width * grid.height)): Uint8Array {
+export function rasterizeLines(
+  fc: FeatureCollection,
+  grid: GridSpec,
+  mask: Uint8Array = new Uint8Array(grid.width * grid.height)
+): Uint8Array {
   const { minX, maxY, cell, width, height } = grid
   for (const f of fc.features) {
     for (const line of lineStrings(f.geometry)) {
@@ -83,10 +87,11 @@ export function rasterizePolygons(
     for (const rings of polygonRings(f.geometry)) {
       let ymin = Infinity
       let ymax = -Infinity
-      for (const ring of rings) for (const [, y] of ring) {
-        if (y < ymin) ymin = y
-        if (y > ymax) ymax = y
-      }
+      for (const ring of rings)
+        for (const [, y] of ring) {
+          if (y < ymin) ymin = y
+          if (y > ymax) ymax = y
+        }
       const r0 = Math.max(0, Math.floor((maxY - ymax) / cell))
       const r1 = Math.min(height - 1, Math.floor((maxY - ymin) / cell))
       for (let r = r0; r <= r1; r++) {
@@ -130,13 +135,18 @@ export function geometryCentre(geom: Geometry | null): [number, number] | null {
       if (y > maxY) maxY = y
     } else for (const sub of c as unknown[]) walk(sub)
   }
-  if (geom.type === 'GeometryCollection') for (const g of geom.geometries) walk((g as { coordinates: unknown }).coordinates)
+  if (geom.type === 'GeometryCollection')
+    for (const g of geom.geometries) walk((g as { coordinates: unknown }).coordinates)
   else walk(geom.coordinates)
   return Number.isFinite(minX) ? [(minX + maxX) / 2, (minY + maxY) / 2] : null
 }
 
 /** Count of features (by bbox centre) per cell, saturating at 255. */
-export function rasterizePointCounts(fc: FeatureCollection, grid: GridSpec, out: Uint8Array = new Uint8Array(grid.width * grid.height)): Uint8Array {
+export function rasterizePointCounts(
+  fc: FeatureCollection,
+  grid: GridSpec,
+  out: Uint8Array = new Uint8Array(grid.width * grid.height)
+): Uint8Array {
   const { minX, maxY, cell, width, height } = grid
   for (const f of fc.features) {
     const c = geometryCentre(f.geometry)

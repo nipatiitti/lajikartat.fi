@@ -2,23 +2,22 @@
   import { COPY, scoreIndex } from '$lib/copy'
   import { BASEMAP_IDS, BASEMAPS } from '$lib/map/basemaps'
   import type { MapPageState } from '$lib/state/map-page.svelte'
-  import type { SpeciesCopy } from '$lib/species/registry'
 
   // The reactive state class is passed whole: element binds write through the
   // instance, so no bind: chain (and no ownership warnings) between components.
   let {
     mapState,
-    copy,
+    layerLabel,
     direction = 'down'
   }: {
     mapState: MapPageState
-    copy: SpeciesCopy
+    /** Label of the species layer toggle ("Lammet"). */
+    layerLabel: string
     /** Which way the panel opens relative to the button. */
     direction?: 'up' | 'down'
   } = $props()
 
   let open = $state(false)
-  const layerLabel = $derived(copy.plural.charAt(0).toUpperCase() + copy.plural.slice(1))
 </script>
 
 {#if open}

@@ -3,7 +3,6 @@ import type { LayerSpec } from '../../kernel/types'
 // Logical layers the perch model needs. `resolve` lists candidate collection-name
 // substrings matched against the LIVE source schema (rename-proof). MML ids are
 // confirmed where noted; water/stream ids get locked from the /collections probe.
-// GTK/SYKE/Corine layers carry no typeName yet → skipped until validated (F3 null).
 export const PERCH_LAYERS: LayerSpec[] = [
   // F5 — candidate ponds: `jarvi` holds both lakes and small ponds (confirmed).
   { key: 'water', source: 'mml', resolve: ['jarvi'], geometry: 'polygon' },
@@ -32,5 +31,4 @@ export const PERCH_LAYERS: LayerSpec[] = [
     geometry: 'polygon',
     params: { typeName: 'Rajapinnat_GTK_Maapera_WFS:maapera_200k_maalajit', outputFormat: 'GEOJSON' }
   }
-  // Corine land cover (F4 productivity cross-check) deferred until F4 lands.
 ]

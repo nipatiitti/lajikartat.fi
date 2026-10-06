@@ -24,8 +24,26 @@ const pond = feat(
 
 const bundle = {
   roads: fc([
-    feat({ type: 'LineString', coordinates: [[23.5015, 61.499], [23.5015, 61.501]] }, 'near'), // ~50 m east
-    feat({ type: 'LineString', coordinates: [[23.6, 61.49], [23.6, 61.51]] }, 'far') // ~5 km east
+    feat(
+      {
+        type: 'LineString',
+        coordinates: [
+          [23.5015, 61.499],
+          [23.5015, 61.501]
+        ]
+      },
+      'near'
+    ), // ~50 m east
+    feat(
+      {
+        type: 'LineString',
+        coordinates: [
+          [23.6, 61.49],
+          [23.6, 61.51]
+        ]
+      },
+      'far'
+    ) // ~5 km east
   ]),
   buildings: fc([
     feat({ type: 'Point', coordinates: [23.5, 61.5008] }, 'b-near'), // ~33 m north
@@ -67,7 +85,15 @@ describe('areaFractionByClass (grid sampling)', () => {
     properties: {},
     geometry: {
       type: 'Polygon',
-      coordinates: [[[23.5, 61.5], [23.6, 61.5], [23.6, 61.6], [23.5, 61.6], [23.5, 61.5]]]
+      coordinates: [
+        [
+          [23.5, 61.5],
+          [23.6, 61.5],
+          [23.6, 61.6],
+          [23.5, 61.6],
+          [23.5, 61.5]
+        ]
+      ]
     }
   }
   const soil = (lng0: number, lng1: number, cls: string): Feature => ({
@@ -75,7 +101,15 @@ describe('areaFractionByClass (grid sampling)', () => {
     properties: { PINTAMAALAJI: cls },
     geometry: {
       type: 'Polygon',
-      coordinates: [[[lng0, 61.5], [lng1, 61.5], [lng1, 61.6], [lng0, 61.6], [lng0, 61.5]]]
+      coordinates: [
+        [
+          [lng0, 61.5],
+          [lng1, 61.5],
+          [lng1, 61.6],
+          [lng0, 61.6],
+          [lng0, 61.5]
+        ]
+      ]
     }
   })
   const ctx = buildJoinContext({

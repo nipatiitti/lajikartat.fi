@@ -1,8 +1,7 @@
 import { clamp } from '../../core/math'
-import type { FactorResult } from '../../core/types'
-import type { ChanterelleInput, DevClass } from '../types'
+import type { DevClass } from '../types'
 
-/** Development class code used by the numeric API (index into this list, −1 unknown). */
+/** Development class code: index into this list, −1 unknown. */
 export const DEV_CLASS_CODES: readonly DevClass[] = [
   'open',
   'seedling',
@@ -12,7 +11,6 @@ export const DEV_CLASS_CODES: readonly DevClass[] = [
   'shelterwood',
   'unevenAged'
 ]
-export const devClassCode = (d: DevClass | null): number => (d === null ? -1 : DEV_CLASS_CODES.indexOf(d))
 
 // Mature = high for both species; open/seedling are veto territory (kept low
 // here for robustness when the veto is bypassed); shelterwood and uneven-aged
@@ -28,7 +26,11 @@ const DEV_CLASS_SCORES: Record<DevClass, number> = {
 }
 const DEV_CLASS_SCORE_BY_CODE: readonly number[] = DEV_CLASS_CODES.map((d) => DEV_CLASS_SCORES[d])
 
-/** Numeric core of M3: mean of the available signals; −1 when both unknown (age NaN or < 0). */
+/**
+ * M3 — stand maturity: mean of the available signals (development class, mean
+ * age); −1 when both unknown. Ectomycorrhizal networks build up with stand
+ * age. (species/chanterelle.md §M3)
+ */
 export function m3Core(devClass: number, meanAge: number): number {
   let sum = 0
   let n = 0
@@ -43,23 +45,4 @@ export function m3Core(devClass: number, meanAge: number): number {
     n++
   }
   return n === 0 ? -1 : clamp(sum / n)
-}
-
-/**
- * M3 — stand maturity. Development class is the primary signal; mean age blends
- * in when present (ectomycorrhizal networks build up with stand age).
- * (species/chantarelle.md §M3)
- */
-export function m3Maturity(input: ChanterelleInput): FactorResult {
-  const subScore = m3Core(devClassCode(input.devClass), input.meanAgeYears ?? -1)
-  if (subScore < 0) return { subScore: null, confidence: 'low', drivers: [] }
-
-  const drivers: string[] = []
-  if (input.devClass === 'mature') drivers.push('uudistuskypsä metsä')
-  else if (input.devClass === 'young') drivers.push('nuori kasvatusmetsä')
-  else if (input.devClass === 'middle') drivers.push('varttunut kasvatusmetsä')
-  if (input.meanAgeYears !== null && input.meanAgeYears >= 60)
-    drivers.push(`keski-ikä ${Math.round(input.meanAgeYears)} v`)
-
-  return { subScore, confidence: 'high', drivers }
 }

@@ -1,22 +1,8 @@
 import type { ChanterelleVariant } from './types'
 
-// The chanterelle model combines like trout (geometric mean + bounded modulators)
-// but with EXPONENT WEIGHTS on the hard filters — the spec's
-// `geomean(M1..M7 · species_weights)` (species/chantarelle.md §2). Weights are
+// Geometric mean with EXPONENT WEIGHTS on the hard filters — the spec's
+// `geomean(M1..M7 · species_weights)` (species/chanterelle.md §2). Weights are
 // relative emphases, renormalised over available factors by core/limiting.ts.
-
-// User-facing labels (Finnish) — these bake into the D1 `why` JSON at pipeline time.
-export const CHANTERELLE_FACTOR_LABELS = {
-  M1: 'Puulajit ja sekapuustoisuus',
-  M2: 'Kasvupaikkatyyppi',
-  M3: 'Puuston ikä ja kehitysvaihe',
-  M4: 'Latvus ja valoisuus',
-  M5: 'Kosteus ja pienmuodot',
-  M6: 'Reunat, polut ja ojat',
-  M7: 'Maaperä',
-  M9: 'Syrjäisyys ja poimintapaine',
-  V: 'Poissulkevat ehdot'
-} as const
 
 export type ChanterelleHardFactorId = 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7'
 export const CHANTERELLE_HARD_FACTORS: readonly ChanterelleHardFactorId[] = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7']
@@ -38,8 +24,7 @@ export interface ChanterelleParams {
   m4: { baPeak: number; baSigma: number; ccPeak: number; ccSigma: number; ccRampFrom: number; ccRampTo: number }
   /**
    * M5: TWI anchors (p10 / p50 / p90 over forest cells) that standardise the
-   * wetness index. Measured by `calibrate --twi` on Pirkkala 2026-09-11
-   * (Luke TWI ×1000 → 5,3 / 6,5 / 9,8); re-check on Pirkanmaa.
+   * wetness index. Measured with `calibrate --twi` (Luke TWI ×1000).
    */
   twiAnchors: { p10: number; p50: number; p90: number }
   /** M6: relative strengths of the proximity signals. */
@@ -74,11 +59,3 @@ export const CHANTERELLE_PARAMS: Record<ChanterelleVariant, ChanterelleParams> =
     soilPenalty: { peat: 0.45, rock: 0.3, rockFreeAllowance: 0 }
   }
 }
-
-// Ethics & legal notes travel with every candidate (species/chantarelle.md §5).
-export const CHANTERELLE_NOTES = [
-  'Poimiminen on sallittua jokamiehenoikeudella, ei kuitenkaan pihoilla, viljelmillä eikä luonnonsuojelualueiden rajoitusosissa',
-  'Tunnistus on aina poimijan omalla vastuulla',
-  'Älä haravoi tai riko sammalta: nosta varovasti ja jätä pienimmät kasvamaan',
-  'Löytöpaikka tuottaa yleensä vuosittain (sienirihmasto säilyy), paina se mieleen'
-]

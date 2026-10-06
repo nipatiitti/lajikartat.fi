@@ -1,22 +1,25 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { encodeComposite } from '@raster'
+import type { FeatureCollection } from 'geojson'
 import { isLayerAvailable } from '../acquire'
-import { skirtTileRefs, TILE_SIZE_M, type RegionPreset, type TileRef } from '../config'
+import { skirtTileRefs, tileRefs, type Bbox, type TileRef } from '../config'
 import { OUT_DIR } from '../load'
+import { progress, warn } from '../progress'
 import type { MmlClient } from '../sources/mml'
+import { TileCache } from '../tile-cache'
 import { warmTiles } from '../tile-context'
 import type { RasterSpecies, RasterTileRef } from '../types'
 import { buildRasterContext } from './context'
 import { encodeGeoTiffU8 } from './geotiff-write'
-import { gridSize, MVMI, rasterTileRef } from './lattice'
+import { MVMI, rasterTileRef } from './lattice'
 import type { LukeRasterSource } from './sources/luke'
 
 export interface RunRasterOptions {
+  /** Only score national tiles intersecting this EPSG:3067 bbox (dev runs); default: all. */
+  bbox?: Bbox
   /** Also write per-factor Float32 sidecars (`<ix>_<iy>.<factor>.f32`) for calibration. */
   debug?: boolean
-  /** Restrict to these tiles (for iteration), as "ix,iy". */
-  only?: string[]
 }
 
 export interface TileHistogram {
@@ -28,64 +31,60 @@ export interface TileHistogram {
   cells: number
 }
 
-export function rasterOutDir(species: string, region: string): string {
-  return join(OUT_DIR, 'raster', species, region)
+/** Tiles listed in `out/<species>/run.json` after a run. */
+export interface RunManifest {
+  species: string
+  bbox3067: Bbox | null
+  tiles: Array<{ ix: number; iy: number }>
+  cellsValid: number
+  finishedAt: string
 }
 
+/** Raw vector tiles kept in memory across scoring tiles (JSON.parse of a 2–9 MB tile is the cost). */
+const RAW_TILE_CACHE = 64
+
+export const rasterOutDir = (species: string): string => join(OUT_DIR, species)
+
 /**
- * Score a region tile by tile. Phase 0 drops tiles with no forest land, phase
- * 1 warms the vector tiles into the disk cache, phase 2 scores and writes one
- * GeoTIFF + histogram per tile under out/raster/<species>/<region>/tiles/.
+ * Score national tiles one by one. Phase 0 drops tiles with no forest land,
+ * phase 1 warms the vector tiles into the disk cache, phase 2 scores and writes
+ * one GeoTIFF + histogram per tile under out/<species>/tiles/.
  */
 export async function runRaster(
   species: RasterSpecies,
-  region: RegionPreset,
   deps: { mml: MmlClient; luke: LukeRasterSource },
   opts: RunRasterOptions = {}
 ): Promise<{ tiles: number; scored: number; outDir: string }> {
-  const { nx, ny } = gridSize(region.bbox3067)
-  const outDir = rasterOutDir(species.id, region.id)
+  const outDir = rasterOutDir(species.id)
   const tilesDir = join(outDir, 'tiles')
   await mkdir(tilesDir, { recursive: true })
 
   // Phase 0 — enumerate tiles and drop the ones without forest land.
-  const all: RasterTileRef[] = []
-  for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) all.push(rasterTileRef(ix, iy, region.bbox3067))
-  const wanted = opts.only ? new Set(opts.only) : null
+  const all = tileRefs(opts.bbox).map((t) => rasterTileRef(t.ix, t.iy))
   console.log(`Phase 0: ${all.length} tiles, checking forest cover (maaluokka)…`)
   const tiles: RasterTileRef[] = []
   for (const ref of all) {
-    if (wanted && !wanted.has(`${ref.ix},${ref.iy}`)) continue
     const maaluokka = await deps.luke.readWindow('mvmi', 'maaluokka', ref.bbox3067)
-    let forest = 0
-    for (let i = 0; i < maaluokka.length; i++) if (maaluokka[i] === 1) forest++
-    if (forest > 0) tiles.push(ref)
+    if (maaluokka.some((v) => v === 1)) tiles.push(ref)
   }
   console.log(`  ${tiles.length} tiles hold forest land`)
 
   // Phase 1 — vector tiles (tile + 1 skirt) into the disk cache.
   const available = species.layers.filter(isLayerAvailable)
   const uniqueRefs = new Map<string, TileRef>()
-  for (const t of tiles) {
-    for (const ref of skirtTileRefs(t.ix, t.iy, region.bbox3067, TILE_SIZE_M, 1)) uniqueRefs.set(`${ref.ix},${ref.iy}`, ref)
-  }
+  for (const t of tiles) for (const ref of skirtTileRefs(t.ix, t.iy)) uniqueRefs.set(`${ref.ix},${ref.iy}`, ref)
   console.log(`Phase 1: fetching ${available.length} layers × ${uniqueRefs.size} tiles (cached tiles skip)…`)
-  const dlStart = Date.now()
-  await warmTiles(available, [...uniqueRefs.values()], deps.mml, 5, (n, total) => {
-    if (n % 20 === 0 || n === total) {
-      const elapsed = (Date.now() - dlStart) / 1000
-      process.stdout.write(`\r  ${n}/${total} fetched — ${elapsed.toFixed(0)}s   `)
-    }
-  })
-  process.stdout.write('\n')
+  const fetching = progress('fetched', available.length * uniqueRefs.size, 20)
+  await warmTiles(available, [...uniqueRefs.values()], deps.mml, warn, fetching.tick)
+  fetching.end()
 
   // Phase 2 — score.
   console.log(`Phase 2: scoring ${tiles.length} tiles…`)
-  const scoreStart = Date.now()
-  let done = 0
+  const scoring = progress('tiles scored', tiles.length, 5)
+  const ctxDeps = { ...deps, rawTiles: new TileCache<FeatureCollection | null>(RAW_TILE_CACHE), onWarn: warn }
   let cellsValid = 0
   for (const ref of tiles) {
-    const ctx = await buildRasterContext(species, ref, region.bbox3067, deps)
+    const ctx = await buildRasterContext(species, ref, ctxDeps)
     const result = species.scoreTile(ctx)
     const n = ref.width * ref.height
     const bytes = new Uint8Array(n)
@@ -101,7 +100,12 @@ export async function runRaster(
     const base = join(tilesDir, `${ref.ix}_${ref.iy}`)
     await writeFile(
       `${base}.tif`,
-      encodeGeoTiffU8(bytes, ref.width, ref.height, { minX: ref.bbox3067[0], maxY: ref.bbox3067[3], cellM: MVMI.cell, nodata: 0 })
+      encodeGeoTiffU8(bytes, ref.width, ref.height, {
+        minX: ref.bbox3067[0],
+        maxY: ref.bbox3067[3],
+        cellM: MVMI.cell,
+        nodata: 0
+      })
     )
     const hist: TileHistogram = { ix: ref.ix, iy: ref.iy, bins, valid, cells: n }
     await writeFile(`${base}.hist.json`, JSON.stringify(hist))
@@ -111,27 +115,17 @@ export async function runRaster(
       }
       await writeFile(`${base}.confidence.u8`, result.confidence)
     }
-    if (++done % 5 === 0 || done === tiles.length) {
-      const elapsed = (Date.now() - scoreStart) / 1000
-      process.stdout.write(`\r  ${done}/${tiles.length} tiles scored — ${elapsed.toFixed(0)}s   `)
-    }
+    scoring.tick()
   }
-  process.stdout.write('\n')
+  scoring.end()
 
-  await writeFile(
-    join(outDir, 'run.json'),
-    JSON.stringify(
-      {
-        species: species.id,
-        region: region.id,
-        bbox3067: region.bbox3067,
-        tiles: tiles.map((t) => ({ ix: t.ix, iy: t.iy, bbox3067: t.bbox3067, width: t.width, height: t.height })),
-        cellsValid,
-        finishedAt: new Date().toISOString()
-      },
-      null,
-      2
-    )
-  )
+  const manifest: RunManifest = {
+    species: species.id,
+    bbox3067: opts.bbox ?? null,
+    tiles: tiles.map((t) => ({ ix: t.ix, iy: t.iy })),
+    cellsValid,
+    finishedAt: new Date().toISOString()
+  }
+  await writeFile(join(outDir, 'run.json'), JSON.stringify(manifest, null, 2))
   return { tiles: tiles.length, scored: cellsValid, outDir }
 }

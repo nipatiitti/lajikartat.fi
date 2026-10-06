@@ -14,6 +14,5 @@ export const ahven: FeatureSpecies = {
   score: scorePerchCandidate,
   // MML jarvi carries no name attribute — every pond is named (if at all) from
   // the nearest place-name point instead.
-  nameJoin: { maxDistanceM: 400 },
-  render: { type: 'vector', colorBy: 'composite' }
+  nameJoin: { maxDistanceM: 400 }
 }

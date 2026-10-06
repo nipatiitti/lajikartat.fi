@@ -11,16 +11,14 @@ import {
   type PickingRainEvent
 } from './picking'
 
+import { scoreTone, type Tone } from '$lib/tone'
+
 // Plain-Finnish reasoning behind a picking analysis, one line per factor.
-// Pure and relative-import only: the pipeline test runner has no $lib alias.
 
-export type ExplainKind = 'rain' | 'moisture' | 'temp' | 'season' | 'frost' | 'next'
-export type ExplainTone = 'green' | 'amber' | 'gray'
-
-export interface ExplainLine {
-  kind: ExplainKind
+interface ExplainLine {
+  kind: 'rain' | 'moisture' | 'temp' | 'season' | 'frost' | 'next'
   text: string
-  tone: ExplainTone
+  tone: Tone
 }
 
 export interface PickingExplanation {
@@ -48,7 +46,7 @@ export function explainPicking(a: PickingAnalysis): PickingExplanation {
   const driver =
     today.driverEvent !== null && !a.events[today.driverEvent].forecast ? a.events[today.driverEvent] : null
   const last = observed.at(-1)
-  const rainTone: ExplainTone = today.drive >= 0.55 ? 'green' : today.drive >= 0.25 ? 'amber' : 'gray'
+  const rainTone = scoreTone(today.drive)
   if (driver) {
     const peak = rangeLabel(driver.peakStart, driver.peakEnd)
     let text = `Sadon käynnisti sade ${soak(driver)}.`

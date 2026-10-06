@@ -22,4 +22,4 @@ export function scorePerch(input: PerchInput): CompositeResult {
   )
 }
 
-export type { PerchInput, AccessType } from './types'
+export type { PerchInput } from './types'

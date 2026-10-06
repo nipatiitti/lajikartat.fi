@@ -1,6 +1,6 @@
 # Brook-Salmonid Habitat Scoring — Implementation Spec
 
-Companion to `big-perch-scoring-spec.md`. Purpose: rank small Finnish streams
+Companion to `species/perch.md`. Purpose: rank small Finnish streams
 (and a few cold ponds) by likelihood of holding **resident brown trout —
 tammukka / purotaimen (Salmo trutta m. fario)** — and the pond/headwater
 salmonid **puronieriä (brook trout, Salvelinus fontinalis)**, for
@@ -10,7 +10,7 @@ salmonid **puronieriä (brook trout, Salvelinus fontinalis)**, for
 > 64°00′N (all of Pirkanmaa) wild, adipose-fin-intact brown trout are protected
 > and MUST be released. Small natural brooks are themselves protected under the
 > Water Act. These resident stocks are fragile remnant gene banks. The app finds
-> *places*, never recommends harvest of wild trout, defaults to C&R guidance
+> _places_, never recommends harvest of wild trout, defaults to C&R guidance
 > (barbless, wet hands, quick release), and should NOT publish precise
 > coordinates of wild-trout brooks. Puronieriä is an invasive species — the
 > ethic there is reversed (removal often encouraged) — but verify local rules.
@@ -53,22 +53,22 @@ if any is ~0, the site score is ~0. The remaining factors (S6 isolation, S7
 cover, S8 occurrence, S9 remoteness) modulate an already-suitable site. Encode
 S1/S2/S3/S5 as suitability curves in [0,1] and multiply; apply S6–S9 as
 bounded multipliers or a small additive bonus on top. Emit each sub-score so a
-human sees *which* factor vetoed a reach.
+human sees _which_ factor vetoed a reach.
 
 ---
 
 ## 3. Target archetype (quick reference)
 
-| Attribute        | Favourable for resident trout                          |
-|------------------|--------------------------------------------------------|
-| Thermal regime   | Cold, stable; groundwater/spring-fed; shaded; higher elevation |
-| Substrate        | Gravel/cobble; glaciofluvial or till; NOT clay/silt    |
-| Acidity          | pH ≳ 5.5 (trout); puronieriä tolerates lower           |
-| Sediment input   | Low — minimal ditching/erosion in catchment            |
-| Flow             | Perennial; moderate gradient; riffle–pool              |
-| Isolation        | Headwater above a natural barrier (relict + protected) |
-| Cover            | Undercut banks, boulders, woody debris, pools, canopy  |
-| Catchment        | Forest/till/esker; low peatland; low agriculture       |
+| Attribute      | Favourable for resident trout                                  |
+| -------------- | -------------------------------------------------------------- |
+| Thermal regime | Cold, stable; groundwater/spring-fed; shaded; higher elevation |
+| Substrate      | Gravel/cobble; glaciofluvial or till; NOT clay/silt            |
+| Acidity        | pH ≳ 5.5 (trout); puronieriä tolerates lower                   |
+| Sediment input | Low — minimal ditching/erosion in catchment                    |
+| Flow           | Perennial; moderate gradient; riffle–pool                      |
+| Isolation      | Headwater above a natural barrier (relict + protected)         |
+| Cover          | Undercut banks, boulders, woody debris, pools, canopy          |
+| Catchment      | Forest/till/esker; low peatland; low agriculture               |
 
 Anti-pattern (veto): acidified peat-fed ditch; silt-choked low-gradient channel;
 sun-exposed channel below a lake outlet running warm; a brook that dries/freezes
@@ -81,8 +81,10 @@ solid; heavily ditched catchment.
 Sub-scores in [0,1] + confidence {high,med,low}. Null where no data → drops out
 of the geometric mean (and lowers confidence). Resolve exact endpoints at build.
 
-### S1 — Thermal regime (cold & stable)  ·  HARD FILTER  ·  confidence MED
+### S1 — Thermal regime (cold & stable) · HARD FILTER · confidence MED
+
 Inputs:
+
 - **groundwater**: SYKE/ELY **pohjavesialueet** (groundwater areas) intersecting
   catchment/reach; MML `lähde` (spring) points near the channel → strong positive
   (cold, stable baseflow; preferred spawning/incubation).
@@ -91,21 +93,25 @@ Inputs:
 - **elevation / position**: DEM elevation (higher, headwater = cooler); penalise
   short reaches just below a lake outlet (warm epilimnion outflow).
 - where available: **SYKE Hydrology API** water-temperature series.
-Suitability peaks for cold, shaded, groundwater-influenced reaches; →0 for warm
-exposed low-gradient outlets.
+  Suitability peaks for cold, shaded, groundwater-influenced reaches; →0 for warm
+  exposed low-gradient outlets.
 
-### S2 — Substrate / spawning gravel  ·  HARD FILTER  ·  confidence MED
+### S2 — Substrate / spawning gravel · HARD FILTER · confidence MED
+
 Inputs:
+
 - **GTK superficial deposits** (WFS, 1:20k–1:200k) along channel + catchment:
   glaciofluvial / till → gravel/cobble (positive); clay / fine marine sediment /
   silt → negative (silt buries redds).
 - **DEM-derived stream gradient**: moderate gradient → riffles/gravel (positive);
   near-flat → silt deposition (negative); cliff/waterfall-steep → not spawnable.
-Direction: gravel/glaciofluvial + moderate gradient ⇒ high; fine sediment/flat ⇒ low.
+  Direction: gravel/glaciofluvial + moderate gradient ⇒ high; fine sediment/flat ⇒ low.
 
-### S3 — Acidity / buffering  ·  HARD FILTER  ·  confidence MED
+### S3 — Acidity / buffering · HARD FILTER · confidence MED
+
 Trout absent below ~pH 5.0 (snowmelt); puronieriä tolerates lower (~4.1–4.5).
 Inputs:
+
 - **GTK acid sulfate soils 1:250k** (WMS) in catchment → strong negative (mostly
   coastal; minor inland).
 - **peatland fraction** in catchment (GTK peat / MML `suo` / Corine) → acidity +
@@ -113,9 +119,10 @@ Inputs:
 - **bedrock buffering** (GTK kallioperä: carbonate/mafic = better buffering).
 - measured **pH/alkalinity** from SYKE VESLA where the reach was sampled (high
   confidence where present).
-Apply species switch: brown trout strict (≥~5.5); puronieriä lenient.
+  Apply species switch: brown trout strict (≥~5.5); puronieriä lenient.
 
-### S4 — Fine-sediment / catchment disturbance  ·  multiplier  ·  confidence MED→HIGH
+### S4 — Fine-sediment / catchment disturbance · multiplier · confidence MED→HIGH
+
 **Primary input now: SYKE PUROHELMI stream-naturalness class (1–5; 5 = least
 altered).** This is a ready-made, ML-modeled composite of exactly the catchment
 disturbance that silts spawning gravel — use class 4–5 as a strong positive.
@@ -123,31 +130,35 @@ Rarity note: in southern water-management areas only ~1% of small streams are
 predicted near-natural, so in Pirkanmaa this class IS the needle. Also pull
 PUROHELMI's **benthic-invertebrate alteration %** as an independent quality +
 food-base signal (feed into S7 too).
+
 - **COVERAGE CAVEAT — handle nulls carefully:** PUROHELMI omits streams with
   <5% peatland in catchment, catchments <5 ha, and the near-pristine far north.
   A clean mineral/esker brook (often ideal trout water) may have NO estimate.
   Treat null as "unknown → fall back to the inputs below," NEVER as "bad."
-Fallback / supporting inputs where PUROHELMI is null:
+  Fallback / supporting inputs where PUROHELMI is null:
 - **Metsäkeskus** ditch-maintenance (kunnostusojitus) project layers in catchment
   → sediment pulse + browning + acidity → negative (caveat: planned ≠ realised).
 - agricultural / erodible land fraction in catchment (Corine over Vemala basin).
-Recent upstream ditching is a strong negative for recruitment (silted gravel).
+  Recent upstream ditching is a strong negative for recruitment (silted gravel).
 
-### S5 — Flow permanence & morphology  ·  HARD FILTER  ·  confidence MED
+### S5 — Flow permanence & morphology · HARD FILTER · confidence MED
+
 Must be perennial (not dry out / freeze solid) with workable gradient.
 Inputs:
+
 - **catchment area / stream order** (SYKE VesiPetoDW national stream network;
   MML `virtavesi`): too tiny → intermittent; headwater-but-spring/mire/lake-fed →
-  sustained baseflow (positive). 
+  sustained baseflow (positive).
 - **DEM gradient**: moderate (riffle–pool) positive; flat (silt/warm) or
   waterfall (uninhabitable reach) low.
 - baseflow support: upstream lake/mire/groundwater area stabilises summer flow.
 
-### S6 — Barriers / protective isolation  ·  multiplier (positive)  ·  confidence MED
+### S6 — Barriers / protective isolation · multiplier (positive) · confidence MED
+
 A natural barrier downstream isolates a resident stock: marks it as tammukka
 (non-migratory) AND shields it from invasives/predators/angling. Double-edged
-(blocks recolonisation → fragile) → treat as a positive prior for a *pure
-resident population*, and raise the conservation/fragility flag.
+(blocks recolonisation → fragile) → treat as a positive prior for a _pure
+resident population_, and raise the conservation/fragility flag.
 Inputs (primary): **SYKE PUROHELMI culvert-passability model** — 84,362 stream×
 road crossings with a 2 m-DEM ML prediction of passability (published where
 probability >50%; valid for culverts/rummut, not bridges). A predicted-impassable
@@ -155,14 +166,16 @@ culvert downstream = strong protective-isolation signal. Supplement with **SYKE
 Vaellusesteet** (migration-barrier service, ArcGIS REST at paikkatieto.ymparisto.fi)
 and DEM knickpoints/waterfalls for natural barriers.
 
-### S7 — Cover & riparian structure (+ food base)  ·  multiplier  ·  confidence LOW→MED
+### S7 — Cover & riparian structure (+ food base) · multiplier · confidence LOW→MED
+
 Undercut banks, boulders, woody debris, deep pools, canopy. Proxy: riparian
 old/mature forest (Metsäkeskus stand age) + channel sinuosity + low-gradient pool
 reaches. Add **PUROHELMI benthic-invertebrate intactness** as a food-base/quality
 signal (intact reference fauna ⇒ good trout food + clean substrate). Structure
 itself is mostly a site-visit check; keep weight small.
 
-### S8 — Known occurrence / colonisation  ·  multiplier (strong where present)  ·  confidence HIGH where data exists
+### S8 — Known occurrence / colonisation · multiplier (strong where present) · confidence HIGH where data exists
+
 Trout streams are comparatively well surveyed (unlike perch ponds).
 Inputs: **electrofishing register (Koekalastusrekisteri, Luke/SYKE Hertta —
 verify access)**; **Luke Kalahavainnot** / **laji.fi (FinBIF) keyed API** trout &
@@ -170,13 +183,15 @@ char occurrence; proximity to a known trout river system's headwaters raises the
 prior. Presence upstream/downstream strongly raises score; confirmed absence
 lowers it.
 
-### S9 — Remoteness / low pressure / discretion  ·  multiplier  ·  confidence HIGH
+### S9 — Remoteness / low pressure / discretion · multiplier · confidence HIGH
+
 As perch F1 (distance to road/parking, gated forest roads, no buildings,
-unpublished). For wild trout this is also a *conservation* control: prefer, and
+unpublished). For wild trout this is also a _conservation_ control: prefer, and
 do not publicise, low-traffic brooks.
 
 ### Pond variant — puronieriä (and small-lake char)
-For the cold-*pond* finders-keepers case, swap the stream factors for:
+
+For the cold-_pond_ finders-keepers case, swap the stream factors for:
 cold + sufficient depth (SYKE Järvirajapinta max depth) + spring-fed
 (pohjavesialueet / inlet springs) + isolated (no/limited inflow-outflow) +
 clear + a stocking history (no open API — heuristic/data request). Puronieriä
@@ -186,9 +201,10 @@ relaxes the acidity filter substantially.
 
 ## 5. Data sources (additions beyond the perch spec)
 
-Most layers are shared with `big-perch-scoring-spec.md` §4 (MML, GTK deposits,
+Most layers are shared with `species/perch.md` §4 (MML, GTK deposits,
 SYKE VESLA/Vemala/registers/hydrology, Metsäkeskus, Corine, Luke/laji.fi).
 Salmonid-specific additions:
+
 - **SYKE PUROHELMI — small-stream naturalness & barriers** (CC BY 4.0; download
   package + interface; on avoindata.fi / ckan.ymparisto.fi / Paikkatietoikkuna).
   Three products on Ranta10-derived segments: (a) habitat naturalness class 1–5
@@ -219,7 +235,7 @@ Salmonid-specific additions:
 - Every wild-trout candidate ships with: the protection notice (release S of
   64°N), C&R handling guidance, a Water-Act small-brook reminder, and NO precise
   public coordinates. Puronieriä candidates flag invasive status instead.
-- This model is good at finding *suitable habitat*; confirming fish still needs
+- This model is good at finding _suitable habitat_; confirming fish still needs
   the occurrence layer (S8) or a careful, low-impact site visit.
 
 ## 7. Sensible v1 cut

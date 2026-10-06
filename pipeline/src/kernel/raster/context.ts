@@ -1,8 +1,8 @@
 import type { FeatureCollection } from 'geojson'
-import { filterLayerFeatures, isLayerAvailable } from '../acquire'
-import { skirtTileRefs, TILE_SIZE_M } from '../config'
+import { filterLayerFeatures, isLayerAvailable, rawLayerTile } from '../acquire'
+import { skirtTileRefs } from '../config'
 import type { MmlClient } from '../sources/mml'
-import { rawLayerTile } from '../tile-context'
+import type { TileCache } from '../tile-cache'
 import type { LayerSpec, RasterContext, RasterSpecies, RasterTileRef } from '../types'
 import { DEFAULT_STAND_EDGE_OPTIONS, standEdgeMask } from './edges'
 import { distanceTransform } from './edt'
@@ -14,35 +14,18 @@ import type { LukeRasterSource } from './sources/luke'
 export interface RasterContextDeps {
   luke: LukeRasterSource
   mml: MmlClient
-  /** Cells of padding around the tile for distance rasters (200 = 3.2 km, covers the 3 km road cap). */
-  padCells?: number
+  /** Raw (3067) vector tiles shared across scoring tiles: neighbours share 6 of their 9 skirt tiles. */
+  rawTiles: TileCache<FeatureCollection | null>
+  onWarn: (message: string) => void
 }
 
 const CELL = MVMI.cell
 /** Padding (cells) for the MVMI bands so stand edges just outside the tile are seen. */
 const BAND_PAD = 20
-
-// Small LRU of raw (3067) vector tiles: neighbouring scoring tiles share 6 of
-// their 9 skirt tiles, and JSON.parse of a 2–9 MB tile is the expensive part.
-const rawLru = new Map<string, FeatureCollection | null>()
-const RAW_LRU_MAX = 64
-
-async function rawTile(layer: LayerSpec, ref: RasterTileRef['vectorRef'], mml: MmlClient): Promise<FeatureCollection | null> {
-  const key = `${layer.source}:${layer.resolve.join('|')}:${layer.params?.typeName ?? ''}:${ref.bbox.join('_')}`
-  if (rawLru.has(key)) {
-    const v = rawLru.get(key) ?? null
-    rawLru.delete(key)
-    rawLru.set(key, v)
-    return v
-  }
-  const v = await rawLayerTile(layer, ref, mml)
-  rawLru.set(key, v)
-  if (rawLru.size > RAW_LRU_MAX) {
-    const oldest = rawLru.keys().next().value
-    if (oldest !== undefined) rawLru.delete(oldest)
-  }
-  return v
-}
+/** Padding (cells) for the vector grid so distance rasters see features up to 3,2 km outside the tile. */
+const GRID_PAD = 200
+/** The largest distance cap a species may ask for without the padding falsifying it. */
+const MAX_DISTANCE_CAP_M = GRID_PAD * CELL
 
 /** Crop a padded row-major grid to its centre `w × h` block. */
 function crop<T extends Float32Array | Uint16Array | Int16Array | Uint8Array>(
@@ -65,20 +48,25 @@ function paddedBbox(bbox: Bbox, padCells: number): Bbox {
   return [bbox[0] - p, bbox[1] - p, bbox[2] + p, bbox[3] + p]
 }
 
+function capped(values: Float32Array, capM: number): Float32Array {
+  if (capM > MAX_DISTANCE_CAP_M)
+    throw new Error(`distance cap ${capM} m exceeds the grid padding (${MAX_DISTANCE_CAP_M} m)`)
+  for (let i = 0; i < values.length; i++) if (values[i] > capM) values[i] = capM
+  return values
+}
+
 /**
  * Assemble everything a raster species needs for one tile: national raster
  * windows (padded, then cropped on access) and the vector layers of the tile's
- * 3×3 vector skirt rasterised onto a padded grid, with distance / count /
- * class primitives memoised per layer.
+ * 3×3 skirt rasterised onto a padded grid, with distance / count / class
+ * primitives memoised per layer.
  */
 export async function buildRasterContext(
   species: RasterSpecies,
   ref: RasterTileRef,
-  region: Bbox,
   deps: RasterContextDeps
 ): Promise<RasterContext> {
-  const { luke, mml } = deps
-  const padCells = deps.padCells ?? 200
+  const { luke, mml, rawTiles, onWarn } = deps
   const { width, height } = ref
 
   // Raster bands (padded by BAND_PAD for the edge mask).
@@ -97,64 +85,64 @@ export async function buildRasterContext(
     if (!b) {
       const p = paddedBands.get(key)
       if (!p) return null
-      b = crop(p, bandW, BAND_PAD, width, height, p instanceof Int16Array ? new Int16Array(width * height) : new Uint16Array(width * height))
+      b = crop(
+        p,
+        bandW,
+        BAND_PAD,
+        width,
+        height,
+        p instanceof Int16Array ? new Int16Array(width * height) : new Uint16Array(width * height)
+      )
       bands.set(key, b)
     }
     return b
   }
-  const productOf = new Map(species.rasters.map((r) => [r.key, r.product] as const))
 
   // Vector layers over the skirt, rasterised lazily onto the padded grid.
-  const gridBbox = paddedBbox(ref.bbox3067, padCells)
+  const gridBbox = paddedBbox(ref.bbox3067, GRID_PAD)
   const grid: GridSpec = {
     minX: gridBbox[0],
     maxY: gridBbox[3],
     cell: CELL,
-    width: width + 2 * padCells,
-    height: height + 2 * padCells
+    width: width + 2 * GRID_PAD,
+    height: height + 2 * GRID_PAD
   }
-  const skirt = skirtTileRefs(ref.ix, ref.iy, region, TILE_SIZE_M, 1)
+  const skirt = skirtTileRefs(ref.ix, ref.iy)
   const layerFeatures = new Map<string, FeatureCollection | null>()
   const layerByKey = new Map(species.layers.map((l) => [l.key, l] as const))
 
-  async function featuresOf(layerKey: string): Promise<FeatureCollection | null> {
-    if (layerFeatures.has(layerKey)) return layerFeatures.get(layerKey) ?? null
-    const layer = layerByKey.get(layerKey)
+  const rawTile = (layer: LayerSpec, vref: RasterTileRef['vectorRef']) =>
+    rawTiles.remember(
+      `${layer.source}:${layer.resolve.join('|')}:${layer.params?.typeName ?? ''}:${vref.bbox.join('_')}`,
+      () => rawLayerTile(layer, vref, mml, onWarn)
+    )
+
+  async function loadLayer(layer: LayerSpec): Promise<void> {
     let fc: FeatureCollection | null = null
-    if (layer && isLayerAvailable(layer)) {
+    if (isLayerAvailable(layer)) {
       const features = []
       let any = false
       for (const vref of skirt) {
-        const raw = await rawTile(layer, vref, mml)
+        const raw = await rawTile(layer, vref)
         if (!raw) continue
         any = true
         features.push(...filterLayerFeatures(layer, raw).features)
       }
       if (any) fc = { type: 'FeatureCollection', features }
-      else if (!layer.optional) console.warn(`\n  ⚠ ${layerKey}: no data for tile ${ref.ix},${ref.iy}`)
+      else if (!layer.optional) onWarn(`${layer.key}: no data for tile ${ref.ix},${ref.iy}`)
     }
-    layerFeatures.set(layerKey, fc)
-    return fc
+    layerFeatures.set(layer.key, fc)
   }
-
-  // Everything below is synchronous for the species; prefetch the features now.
-  await Promise.all(species.layers.map((l) => featuresOf(l.key)))
+  await Promise.all(species.layers.map(loadLayer))
 
   const distances = new Map<string, Float32Array>()
   const counts = new Map<string, Uint16Array>()
   const classes = new Map<string, { codes: Uint8Array; classes: string[] }>()
   let edgeDistance: Float32Array | null | undefined
 
-  const cropF32 = (padded: Float32Array, capM: number) => {
-    const out = crop(padded, grid.width, padCells, width, height, new Float32Array(width * height))
-    for (let i = 0; i < out.length; i++) if (out[i] > capM) out[i] = capM
-    return out
-  }
-
   return {
     tile: ref,
     band,
-    bandNodata: (key) => luke.nodata(productOf.get(key) ?? 'mvmi'),
     hasLayer: (key) => layerFeatures.get(key) != null,
     distanceTo(key, capM) {
       const memo = `${key}:${capM}`
@@ -164,8 +152,11 @@ export async function buildRasterContext(
       if (!fc) return null
       const layer = layerByKey.get(key)
       const mask =
-        layer?.geometry === 'polygon' ? rasterizePolygons(fc, grid, () => 1, rasterizeLines(fc, grid)) : rasterizeLines(fc, grid)
-      const d = cropF32(distanceTransform(mask, grid.width, grid.height, CELL), capM)
+        layer?.geometry === 'polygon'
+          ? rasterizePolygons(fc, grid, () => 1, rasterizeLines(fc, grid))
+          : rasterizeLines(fc, grid)
+      const padded = distanceTransform(mask, grid.width, grid.height, CELL)
+      const d = capped(crop(padded, grid.width, GRID_PAD, width, height, new Float32Array(width * height)), capM)
       distances.set(memo, d)
       return d
     },
@@ -178,7 +169,7 @@ export async function buildRasterContext(
       const pts = rasterizePointCounts(fc, grid)
       const sat = summedAreaTable(pts, grid.width, grid.height)
       const sums = boxSum(sat, grid.width, grid.height, Math.round(radiusM / CELL))
-      const out = crop(sums, grid.width, padCells, width, height, new Uint16Array(width * height))
+      const out = crop(sums, grid.width, GRID_PAD, width, height, new Uint16Array(width * height))
       counts.set(memo, out)
       return out
     },
@@ -196,7 +187,7 @@ export async function buildRasterContext(
         if (!name) return 0
         let c = codeOf.get(name)
         if (c === undefined) {
-          if (names.length >= 255) return 0
+          if (names.length >= 255) return 0 // Uint8 code space exhausted; further classes read as "none"
           c = names.length
           names.push(name)
           codeOf.set(name, c)
@@ -214,8 +205,11 @@ export async function buildRasterContext(
       if (!ika || !h) return (edgeDistance = null)
       const mask = standEdgeMask(ika, h, bandW, bandH, DEFAULT_STAND_EDGE_OPTIONS)
       const d = distanceTransform(mask, bandW, bandH, CELL)
+      // Capped by the band padding, not the grid padding: edges further than
+      // BAND_PAD cells outside the tile are unseen, so the cap must not exceed it.
       const out = crop(d, bandW, BAND_PAD, width, height, new Float32Array(width * height))
-      for (let i = 0; i < out.length; i++) if (out[i] > capM) out[i] = capM
+      const cap = Math.min(capM, BAND_PAD * CELL)
+      for (let i = 0; i < out.length; i++) if (out[i] > cap) out[i] = cap
       return (edgeDistance = out)
     }
   }

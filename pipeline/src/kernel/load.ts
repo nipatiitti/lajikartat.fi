@@ -1,163 +1,130 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { bbox as turfBbox, centroid, simplify } from '@turf/turf'
+import { simplify } from '@turf/turf'
 import type { Feature, FeatureCollection } from 'geojson'
+import { datasetVersion } from './config'
 import type { CandidateFeature, ScoredCandidate } from './types'
 
 export const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../out')
-const PIPELINE_VERSION = 'v1'
+/** Polygon simplification for the render blob (degrees, ~10 m). */
+const RENDER_TOLERANCE_DEG = 0.0001
 
 export interface ScoredEntry {
   candidate: CandidateFeature
   score: ScoredCandidate
 }
 
-export interface LoadResult {
-  sqlPath: string
-  geojsonPath: string
-  centroidsPath: string | null
-  count: number
+export interface DatasetRow {
+  species: string
+  kind: 'feature' | 'raster'
+  version: string
+  r2Key: string
+  meta?: unknown
+}
+
+/** Manifest the root `data:publish:local` script reads: R2 objects to put and SQL files to execute. */
+export interface PublishManifest {
+  r2: Array<{ key: string; file: string }>
+  sql: string[]
+}
+
+/** Idempotent dataset-row SQL: replaces the row for this species / kind / version. */
+export function datasetSql(row: DatasetRow): string {
+  const now = Math.floor(Date.now() / 1000)
+  return (
+    `INSERT OR REPLACE INTO species_dataset (species, kind, version, r2_key, published_at, meta) VALUES (` +
+    [
+      str(row.species),
+      str(row.kind),
+      str(row.version),
+      str(row.r2Key),
+      num(now),
+      row.meta === undefined ? 'NULL' : json(row.meta)
+    ].join(', ') +
+    ');\n'
+  )
+}
+
+export async function writePublishManifest(species: string, manifest: PublishManifest): Promise<string> {
+  const p = join(OUT_DIR, species, 'publish.json')
+  await mkdir(dirname(p), { recursive: true })
+  await writeFile(p, JSON.stringify(manifest, null, 2))
+  return p
+}
+
+/** SQL statements that replace every candidate row of a species. */
+export function candidateSql(species: string, entries: ScoredEntry[]): string[] {
+  const sql = [`DELETE FROM candidate WHERE species = ${str(species)};`]
+  for (const { candidate, score } of entries) {
+    sql.push(
+      `INSERT INTO candidate (id, species, name, area_ha, composite, confidence, why) VALUES (` +
+        [
+          str(candidateId(species, candidate)),
+          str(species),
+          str(candidate.name),
+          num(candidate.areaHa),
+          num(score.composite),
+          str(score.confidence),
+          json(score.why)
+        ].join(', ') +
+        ');'
+    )
+  }
+  return sql
 }
 
 /**
- * Local-first loader: emits an idempotent SQL file (load into local D1 with
- * `wrangler d1 execute DB --local --file=…`) plus a GeoJSON render artifact.
- * The same shape swaps to D1-REST + R2 for remote without touching scoring.
- * With `publishCentroids` a second, much smaller Point GeoJSON (same props) is
- * emitted for heatmap rendering — it stays serveable at national scale even
- * when the polygon blob eventually moves to bbox-scoped delivery.
+ * Local-first loader for a feature species: an idempotent SQL file (candidate
+ * rows + dataset row), the render GeoJSON, and the publish manifest under
+ * out/<species>/. The same files load into remote D1 / R2.
  */
 export async function loadFeatureDataset(
   species: string,
-  region: string,
-  entries: ScoredEntry[],
-  options: { publishCentroids?: boolean } = {}
-): Promise<LoadResult> {
-  await mkdir(OUT_DIR, { recursive: true })
-  const now = Math.floor(Date.now() / 1000)
-  const r2Key = `${species}/${region}/${PIPELINE_VERSION}.geojson`
-  const centroidsR2Key = `${species}/${region}/${PIPELINE_VERSION}.centroids.geojson`
+  entries: ScoredEntry[]
+): Promise<{ sqlPath: string; geojsonPath: string; manifestPath: string; count: number }> {
+  const outDir = join(OUT_DIR, species)
+  await mkdir(outDir, { recursive: true })
+  const version = datasetVersion()
+  const r2Key = `geometry/${species}/${version}.geojson`
 
-  // No explicit BEGIN/COMMIT — D1's `execute --file` runs the statements itself.
-  const sql: string[] = [...resetStatements(species, region)]
-  const features: Feature[] = []
-  const centroidFeatures: Feature[] = []
-
-  for (const { candidate, score } of entries) {
-    const id = `${species}:${candidate.id}`
-    const [minLng, minLat, maxLng, maxLat] = turfBbox(candidate.geometry)
-    const [cLng, cLat] = centroid(candidate.geometry).geometry.coordinates
-
-    sql.push(
-      `INSERT OR REPLACE INTO candidate (id, species, source_feature_id, name, centroid_lat, centroid_lng, ` +
-        `min_lat, min_lng, max_lat, max_lng, area_ha, region, pipeline_version, updated_at) VALUES (` +
-        [
-          str(id),
-          str(species),
-          str(candidate.id),
-          str(candidate.name),
-          num(cLat),
-          num(cLng),
-          num(minLat),
-          num(minLng),
-          num(maxLat),
-          num(maxLng),
-          num(candidate.areaHa),
-          str(region),
-          str(PIPELINE_VERSION),
-          num(now)
-        ].join(', ') +
-        ');'
-    )
-    sql.push(
-      `INSERT INTO candidate_score (candidate_id, species, pipeline_version, composite, confidence, factors, why, ` +
-        `scored_at) VALUES (` +
-        [
-          str(id),
-          str(species),
-          str(PIPELINE_VERSION),
-          num(score.composite),
-          str(score.confidence),
-          json(score.factors),
-          json(score.why),
-          num(now)
-        ].join(', ') +
-        ');'
-    )
-    features.push(renderFeature(id, candidate, score))
-    if (options.publishCentroids) {
-      centroidFeatures.push({
-        type: 'Feature',
-        id,
-        properties: renderProps(id, candidate, score),
-        geometry: { type: 'Point', coordinates: [cLng, cLat] }
-      })
-    }
+  const sql = [...candidateSql(species, entries), datasetSql({ species, kind: 'feature', version, r2Key })]
+  const geojson: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: entries.map(({ candidate, score }) => renderFeature(candidateId(species, candidate), candidate, score))
   }
-
-  sql.push(
-    `INSERT INTO species_dataset (species, region, pipeline_version, kind, r2_key, published_at) VALUES (` +
-      [str(species), str(region), str(PIPELINE_VERSION), str('feature'), str(r2Key), num(now)].join(', ') +
-      ');'
-  )
-  if (options.publishCentroids) {
-    sql.push(
-      `INSERT INTO species_dataset (species, region, pipeline_version, kind, r2_key, published_at) VALUES (` +
-        [str(species), str(region), str(PIPELINE_VERSION), str('centroids'), str(centroidsR2Key), num(now)].join(', ') +
-        ');'
-    )
-  }
-
-  const geojson: FeatureCollection = { type: 'FeatureCollection', features }
-  const sqlPath = join(OUT_DIR, `${species}-${region}.sql`)
-  const geojsonPath = join(OUT_DIR, `${species}-${region}.geojson`)
-  await writeFile(sqlPath, sql.join('\n'))
+  const sqlPath = join(outDir, 'dataset.sql')
+  const geojsonPath = join(outDir, 'features.geojson')
+  await writeFile(sqlPath, sql.join('\n') + '\n')
   await writeFile(geojsonPath, JSON.stringify(geojson))
-
-  let centroidsPath: string | null = null
-  if (options.publishCentroids) {
-    centroidsPath = join(OUT_DIR, `${species}-${region}.centroids.geojson`)
-    const centroidFc: FeatureCollection = { type: 'FeatureCollection', features: centroidFeatures }
-    await writeFile(centroidsPath, JSON.stringify(centroidFc))
-  }
-  return { sqlPath, geojsonPath, centroidsPath, count: entries.length }
+  const manifestPath = await writePublishManifest(species, { r2: [{ key: r2Key, file: geojsonPath }], sql: [sqlPath] })
+  return { sqlPath, geojsonPath, manifestPath, count: entries.length }
 }
 
-function resetStatements(species: string, region: string): string[] {
-  return [
-    `DELETE FROM candidate_score WHERE pipeline_version = ${str(PIPELINE_VERSION)} AND candidate_id IN ` +
-      `(SELECT id FROM candidate WHERE species = ${str(species)} AND region = ${str(region)});`,
-    `DELETE FROM candidate WHERE species = ${str(species)} AND region = ${str(region)};`,
-    `DELETE FROM species_dataset WHERE species = ${str(species)} AND region = ${str(region)} ` +
-      `AND pipeline_version = ${str(PIPELINE_VERSION)};`
-  ]
-}
+const candidateId = (species: string, c: CandidateFeature) => `${species}:${c.id}`
 
-// Species-agnostic render properties: the map colours/filters/ranks straight off
-// composite + confidence. Per-factor detail is read from D1 on click (it lives in
-// candidate_score.factors), so the geometry blob carries no factor keys.
-function renderProps(id: string, candidate: CandidateFeature, score: ScoredCandidate) {
-  return {
-    id,
-    name: candidate.name,
-    composite: round(score.composite),
-    confidence: score.confidence,
-    areaHa: candidate.areaHa === null ? null : Math.round(candidate.areaHa * 10) / 10
-  }
-}
-
+// Species-agnostic render properties: the map colours/filters straight off
+// composite + confidence; the why-breakdown is read from D1 on tap.
 function renderFeature(id: string, candidate: CandidateFeature, score: ScoredCandidate): Feature {
-  const simplified = simplify(candidate.geometry, { tolerance: 0.0001, highQuality: false, mutate: false })
+  const simplified = simplify(candidate.geometry, {
+    tolerance: RENDER_TOLERANCE_DEG,
+    highQuality: false,
+    mutate: false
+  })
   return {
     type: 'Feature',
     id,
-    properties: renderProps(id, candidate, score),
+    properties: {
+      id,
+      name: candidate.name,
+      composite: Math.round(score.composite * 1000) / 1000,
+      confidence: score.confidence,
+      areaHa: candidate.areaHa === null ? null : Math.round(candidate.areaHa * 10) / 10
+    },
     geometry: simplified.geometry
   }
 }
 
-const round = (n: number): number => Math.round(n * 1000) / 1000
-const str = (s: string | null): string => (s === null ? 'NULL' : `'${s.replace(/'/g, "''")}'`)
+export const str = (s: string | null): string => (s === null ? 'NULL' : `'${s.replace(/'/g, "''")}'`)
 const num = (n: number | null): string => (n === null ? 'NULL' : String(n))
-const json = (v: unknown): string => `'${JSON.stringify(v).replace(/'/g, "''")}'`
+const json = (v: unknown): string => str(JSON.stringify(v))

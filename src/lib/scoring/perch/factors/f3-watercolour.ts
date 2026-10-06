@@ -6,7 +6,7 @@ import type { PerchInput } from '../types'
  * F3 — water colour, inverted folk wisdom: browner = smaller perch. v1 uses a
  * proxy (catchment soil composition), not measured colour, so confidence is
  * "med" until SYKE VESLA is wired in v2. Low peatland + esker/mineral catchment
- * ⇒ clearer water ⇒ higher score. (perch.md §F3)
+ * ⇒ clearer water ⇒ higher score. (species/perch.md §F3)
  */
 export function f3WaterColour(input: PerchInput): FactorResult {
   if (input.peatFraction === null) return { subScore: null, confidence: 'low', drivers: [] }

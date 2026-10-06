@@ -5,7 +5,7 @@ import type { PerchInput } from '../types'
 /**
  * F2 — isolation. Fewer stream connections support the cannibal-control regime
  * and block cyprinid colonisation. 0 = closed basin (best), 1 = headwater,
- * ≥2 = through-flow. (perch.md §F2)
+ * ≥2 = through-flow. (species/perch.md §F2)
  */
 export function f2Isolation(input: PerchInput): FactorResult {
   if (input.connectingStreamCount === null) return { subScore: null, confidence: 'low', drivers: [] }

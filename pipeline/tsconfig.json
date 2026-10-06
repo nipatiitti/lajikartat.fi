@@ -17,5 +17,6 @@
     },
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../src/lib/scoring/**/*.ts", "../src/lib/raster/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "../src/lib/scoring/**/*.ts", "../src/lib/raster/**/*.ts"],
+  "exclude": ["../src/lib/**/*.test.ts"]
 }

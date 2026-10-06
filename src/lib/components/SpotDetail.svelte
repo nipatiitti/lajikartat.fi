@@ -1,43 +1,38 @@
 <script lang="ts">
   import { getCandidateDetail } from '$lib/candidates.remote'
-  import PickingLinkPill from '$lib/components/PickingLinkPill.svelte'
   import StarPlot, { type StarAxis } from '$lib/components/StarPlot.svelte'
-  import { CONFIDENCE_CHIP_CLASSES, CONFIDENCE_LABELS, COPY, FACTOR_SHORT_LABELS, scoreIndex } from '$lib/copy'
-  import type { SpeciesCopy } from '$lib/species/registry'
+  import { CONFIDENCE_LABELS, COPY, FACTOR_SHORT_LABELS, scoreIndex } from '$lib/copy'
+  import type { SpeciesRenderConfig } from '$lib/species/registry'
+  import { CONFIDENCE_TONE, TONE_CHIP } from '$lib/tone'
 
   let {
-    species,
     id,
-    copy,
+    unit,
     coords = null,
-    showConditions = false,
     onclose
   }: {
-    species: string
     id: string
-    copy: SpeciesCopy
-    /** Spot centre [lng, lat] for the utility row and per-spot conditions. */
+    unit: SpeciesRenderConfig['unit']
+    /** Spot centre [lng, lat] for the utility row. */
     coords?: [number, number] | null
-    showConditions?: boolean
     onclose: () => void
   } = $props()
 
+  const COPIED_MS = 2000
+
   // Re-creating the query when `id` changes gives us reactive loading/error/current.
-  const detail = $derived(getCandidateDetail({ species, id }))
+  const detail = $derived(getCandidateDetail({ id }))
 
   // Star axes: scored factors only. The veto factor is pass/fail, not a scale.
-  const axes = $derived.by<StarAxis[]>(() => {
-    const out: StarAxis[] = []
-    for (const f of detail.current?.why.factors ?? []) {
-      if (f.id === 'V' || f.subScore === null) continue
-      out.push({ id: f.id, label: FACTOR_SHORT_LABELS[f.id] ?? f.label, value: f.subScore })
-    }
-    return out
-  })
+  const axes = $derived<StarAxis[]>(
+    (detail.current?.why.factors ?? [])
+      .filter((f) => f.id !== 'V' && f.subScore !== null)
+      .map((f) => ({ id: f.id, label: FACTOR_SHORT_LABELS[f.id] ?? f.label, value: f.subScore as number }))
+  )
 
   const coordsText = $derived(coords ? `${coords[1].toFixed(5)}, ${coords[0].toFixed(5)}` : null)
   const mapsUrl = $derived(
-    coords ? `https://www.google.com/maps/dir/?api=1&destination=${coords[1].toFixed(5)},${coords[0].toFixed(5)}` : null
+    coordsText && `https://www.google.com/maps/dir/?api=1&destination=${coordsText.replace(' ', '')}`
   )
 
   let copied = $state<'coords' | 'link' | null>(null)
@@ -47,32 +42,45 @@
     void navigator.clipboard.writeText(text).then(() => {
       copied = kind
       clearTimeout(copiedTimer)
-      copiedTimer = setTimeout(() => (copied = null), 2000)
+      copiedTimer = setTimeout(() => (copied = null), COPIED_MS)
     })
   }
 
   function share() {
-    if (navigator.share) void navigator.share({ url: location.href }).catch(() => {})
-    else copyText(location.href, 'link')
+    const url = location.href
+    if (navigator.share) void navigator.share({ url }).catch(() => copyText(url, 'link'))
+    else copyText(url, 'link')
   }
 </script>
+
+{#snippet action(label: string, onclick: () => void)}
+  <button
+    type="button"
+    class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+    {onclick}
+  >
+    {label}
+  </button>
+{/snippet}
 
 <div class="flex h-full min-h-0 flex-col">
   <header class="flex items-start justify-between gap-2 border-b border-gray-100 px-4 py-3">
     <div class="min-w-0">
       {#if detail.current}
-        <h3 class="truncate font-semibold">{detail.current.name ?? `Nimetön ${copy.singular}`}</h3>
+        <h3 class="truncate font-semibold">{detail.current.name ?? `${COPY.unnamed} ${unit.singular}`}</h3>
         <p class="flex items-center gap-1.5 text-xs text-gray-500">
           {#if detail.current.areaHa}<span>{detail.current.areaHa.toFixed(1).replace('.', ',')} ha</span> ·{/if}
           <span>{COPY.potential.toLowerCase()} {scoreIndex(detail.current.composite)}/100</span>
           <span
-            class="rounded px-1.5 py-0.5 text-[10px] font-medium {CONFIDENCE_CHIP_CLASSES[detail.current.confidence]}"
+            class="rounded px-1.5 py-0.5 text-[10px] font-medium {TONE_CHIP[
+              CONFIDENCE_TONE[detail.current.confidence]
+            ]}"
           >
             {CONFIDENCE_LABELS[detail.current.confidence]}
           </span>
         </p>
       {:else}
-        <h3 class="font-semibold text-gray-400">Kohteen tiedot</h3>
+        <h3 class="font-semibold text-gray-400">{COPY.spot}</h3>
       {/if}
     </div>
     <button type="button" onclick={onclose} class="rounded p-1 text-gray-400 hover:bg-gray-100" aria-label={COPY.close}>
@@ -88,12 +96,6 @@
     {:else}
       {@const d = detail.current}
       <StarPlot {axes} />
-
-      {#if showConditions && coords}
-        <div class="mt-2 flex justify-center">
-          <PickingLinkPill center={coords} {species} spot />
-        </div>
-      {/if}
 
       <h4 class="mt-4 text-xs font-semibold tracking-wide text-gray-500 uppercase">{COPY.reasons}</h4>
       <ul class="mt-2 flex flex-col gap-2.5">
@@ -116,13 +118,7 @@
 
       <div class="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
         {#if coordsText}
-          <button
-            type="button"
-            class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            onclick={() => copyText(coordsText, 'coords')}
-          >
-            {copied === 'coords' ? COPY.copied : COPY.copyCoords}
-          </button>
+          {@render action(copied === 'coords' ? COPY.copied : COPY.copyCoords, () => copyText(coordsText, 'coords'))}
         {/if}
         {#if mapsUrl}
           <a
@@ -134,13 +130,7 @@
             {COPY.openInMaps}
           </a>
         {/if}
-        <button
-          type="button"
-          class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          onclick={share}
-        >
-          {copied === 'link' ? COPY.copied : COPY.share}
-        </button>
+        {@render action(copied === 'link' ? COPY.copied : COPY.share, share)}
       </div>
 
       <p class="mt-4 text-xs text-gray-400">{COPY.potentialCaveat}</p>

@@ -1,31 +1,31 @@
+import { MVMI } from './lattice'
+
 export interface StandEdgeOptions {
   /** Age jump (years) between 4-neighbours that marks a stand boundary. */
   ageJump: number
   /** Mean-height jump (dm) that marks a stand boundary. */
   heightJumpDm: number
-  /** Value meaning "outside forest" — a forest cell next to it is a forest edge. */
-  nodata: number
-  /** Value meaning "unknown" (clouds) — never an edge, never compared. */
-  unknown: number
   /** Treat the forest / non-forest boundary as an edge (field, lake, road corridor). */
   nonForestIsEdge: boolean
   /** 3×3 median-filter the bands first: MVMI is a per-pixel kNN estimate and
    * neighbouring pixels jitter by tens of years, which otherwise marks most
-   * of the forest as "edge" (Pirkkala: 63 % of cells at 20 y / 5 m raw). */
+   * of the forest as "edge" (a probe tile: 63 % of cells at 20 y / 5 m raw). */
   median: boolean
 }
 
 export const DEFAULT_STAND_EDGE_OPTIONS: StandEdgeOptions = {
   ageJump: 30,
   heightJumpDm: 80,
-  nodata: 32767,
-  unknown: 32766,
   nonForestIsEdge: true,
   median: true
 }
 
 /** 3×3 median of forest cells; nodata / unknown pass through and are ignored in the window. */
-export function median3x3(src: ArrayLike<number>, width: number, rows: number, nodata: number, unknown: number): Uint16Array {
+// Outside-forest cells (nodataOutside) mark a forest edge; cloud cells (nodataCloud) are never compared.
+const nodata = MVMI.nodataOutside
+const unknown = MVMI.nodataCloud
+
+function median3x3(src: ArrayLike<number>, width: number, rows: number): Uint16Array {
   const out = new Uint16Array(width * rows)
   const win = new Array<number>(9)
   for (let y = 0; y < rows; y++) {
@@ -67,10 +67,10 @@ export function standEdgeMask(
   rows: number,
   opts: StandEdgeOptions = DEFAULT_STAND_EDGE_OPTIONS
 ): Uint8Array {
-  const ika = opts.median ? median3x3(ikaRaw, width, rows, opts.nodata, opts.unknown) : ikaRaw
-  const height = opts.median ? median3x3(heightRaw, width, rows, opts.nodata, opts.unknown) : heightRaw
+  const ika = opts.median ? median3x3(ikaRaw, width, rows) : ikaRaw
+  const height = opts.median ? median3x3(heightRaw, width, rows) : heightRaw
   const mask = new Uint8Array(width * rows)
-  const isForest = (i: number) => ika[i] !== opts.nodata && ika[i] !== opts.unknown
+  const isForest = (i: number) => ika[i] !== nodata && ika[i] !== unknown
   const compare = (a: number, b: number) => {
     const fa = isForest(a)
     const fb = isForest(b)
@@ -82,8 +82,8 @@ export function standEdgeMask(
       return
     }
     if (!opts.nonForestIsEdge) return
-    if (fa && ika[b] === opts.nodata) mask[a] = 1
-    else if (fb && ika[a] === opts.nodata) mask[b] = 1
+    if (fa && ika[b] === nodata) mask[a] = 1
+    else if (fb && ika[a] === nodata) mask[b] = 1
   }
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < width; x++) {

@@ -1,0 +1,4 @@
+# Copy to `.dev.vars` (gitignored) and fill in for `vite dev` / `wrangler dev`.
+# Used server-side by the /basemap proxy to fetch MML vector tiles; never shipped
+# to the browser. Without it the basemap degrades to a blank style (polygons still render).
+MML_API_KEY=

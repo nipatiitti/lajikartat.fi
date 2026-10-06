@@ -1,8 +1,7 @@
 import type { StyleSpecification } from 'maplibre-gl'
 
 // MML basemaps through the same-origin `/basemap` key-injecting proxy
-// (host avoin-karttakuva.maanmittauslaitos.fi — the proxy forwards any path).
-// Validated live 2026-08-09: both vector styles 200, both WMTS REST rasters 200.
+// (host avoin-karttakuva.maanmittauslaitos.fi).
 
 export type BasemapId = 'backgroundmap' | 'taustakartta' | 'maastokartta' | 'ortokuva'
 
@@ -48,8 +47,8 @@ export const DEFAULT_BASEMAP: BasemapId = 'backgroundmap'
 
 export const BASEMAP_IDS = Object.keys(BASEMAPS) as BasemapId[]
 
-// Used when the basemap proxy 204s (no MML key) — candidate layers still render.
-export const BLANK_STYLE: StyleSpecification = {
+// Used when the basemap proxy 204s (no MML key) — species layers still render.
+const BLANK_STYLE: StyleSpecification = {
   version: 8,
   sources: {},
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e8eef0' } }]

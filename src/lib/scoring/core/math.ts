@@ -7,7 +7,7 @@ export function logSaturate(x: number, cap: number): number {
   return clamp(Math.log1p(x) / Math.log1p(cap))
 }
 
-/** Unimodal Gaussian peak, max 1 at `center`, width `sigma`. (For future F4.) */
+/** Unimodal Gaussian peak, max 1 at `center`, width `sigma`. */
 export function gaussianPeak(x: number, center: number, sigma: number): number {
   const z = (x - center) / sigma
   return Math.exp(-0.5 * z * z)

@@ -19,7 +19,6 @@ interface OgcLink {
 }
 
 export interface MmlClient {
-  listCollections(): Promise<CollectionInfo[]>
   /** Resolve a logical layer to a live collection id (rename-proof). */
   resolveCollection(candidates: string[]): Promise<string>
   /** Fetch all features in a 3067 bbox (responses stay in 3067, cached verbatim). */
@@ -90,5 +89,5 @@ export function createMmlClient(apiKey: string): MmlClient {
     return fc
   }
 
-  return { listCollections, resolveCollection, fetchBbox }
+  return { resolveCollection, fetchBbox }
 }

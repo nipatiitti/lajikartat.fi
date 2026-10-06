@@ -1,11 +1,12 @@
 import { centroid } from '@turf/turf'
 import Flatbush from 'flatbush'
 import type { FeatureCollection } from 'geojson'
-import { skirtTileRefs, TILE_SIZE_M, tileIndexOf, tileRef, type TileRef } from './config'
+import { rawLayerTile } from './acquire'
+import { skirtTileRefs, tileIndexOf, type TileRef } from './config'
 import type { ScoredEntry } from './load'
 import { reprojectPoint4326to3067 } from './reproject'
 import type { MmlClient } from './sources/mml'
-import { rawLayerTile, warmTiles } from './tile-context'
+import { warmTiles } from './tile-context'
 import type { LayerSpec } from './types'
 
 // MML place names: Point features, name in `teksti`, class in `kohdeluokka`
@@ -13,24 +14,21 @@ import type { LayerSpec } from './types'
 // search runs in metres without reprojection.
 const PAIKANNIMI_LAYER: LayerSpec = { key: 'paikannimi', source: 'mml', resolve: ['paikannimi'], geometry: 'point' }
 
-export interface NameJoinOptions {
+interface NameJoinOptions {
   maxDistanceM: number
   kohdeluokka?: number[]
 }
 
-type Bbox = [number, number, number, number]
-
 /**
  * Post-scoring enrichment: give each still-unnamed published candidate the
  * nearest place name within `maxDistanceM` of its centroid. The name is the
- * raw `teksti` string only — no composed labels. Runs after the publish gate
- * so only candidates that reach D1/R2 pay for paikannimi tiles.
+ * raw `teksti` string only — no composed labels.
  */
 export async function applyNameJoin(
   entries: ScoredEntry[],
   opts: NameJoinOptions,
-  regionBbox3067: Bbox,
-  mml: MmlClient
+  mml: MmlClient,
+  onWarn: (message: string) => void
 ): Promise<number> {
   const unnamed = entries.filter((e) => e.candidate.name === null)
   if (unnamed.length === 0) return 0
@@ -40,7 +38,7 @@ export async function applyNameJoin(
   for (const entry of unnamed) {
     const [lng, lat] = centroid(entry.candidate.geometry).geometry.coordinates
     const [x, y] = reprojectPoint4326to3067([lng, lat])
-    const { ix, iy } = tileIndexOf(x, y, regionBbox3067, TILE_SIZE_M)
+    const { ix, iy } = tileIndexOf(x, y)
     const key = `${ix},${iy}`
     const group = byTile.get(key) ?? { ix, iy, items: [] }
     group.items.push({ entry, x, y })
@@ -51,16 +49,14 @@ export async function applyNameJoin(
   // maxDistanceM ≤ TILE_SIZE_M) — disk-cached like every other MML layer.
   const uniqueRefs = new Map<string, TileRef>()
   for (const g of byTile.values()) {
-    for (const ref of skirtTileRefs(g.ix, g.iy, regionBbox3067, TILE_SIZE_M, 1)) {
-      uniqueRefs.set(`${ref.ix},${ref.iy}`, ref)
-    }
+    for (const ref of skirtTileRefs(g.ix, g.iy)) uniqueRefs.set(`${ref.ix},${ref.iy}`, ref)
   }
-  await warmTiles([PAIKANNIMI_LAYER], [...uniqueRefs.values()], mml)
+  await warmTiles([PAIKANNIMI_LAYER], [...uniqueRefs.values()], mml, onWarn)
 
   const tileCache = new Map<string, FeatureCollection | null>()
   const tileFc = async (ref: TileRef): Promise<FeatureCollection | null> => {
     const key = `${ref.ix},${ref.iy}`
-    if (!tileCache.has(key)) tileCache.set(key, await rawLayerTile(PAIKANNIMI_LAYER, ref, mml))
+    if (!tileCache.has(key)) tileCache.set(key, await rawLayerTile(PAIKANNIMI_LAYER, ref, mml, onWarn))
     return tileCache.get(key) ?? null
   }
 
@@ -69,8 +65,8 @@ export async function applyNameJoin(
     // Gather names over the tile + skirt, dedupe (skirts overlap across groups).
     const points: { x: number; y: number; name: string }[] = []
     const seen = new Set<unknown>()
-    for (const ref of skirtTileRefs(group.ix, group.iy, regionBbox3067, TILE_SIZE_M, 1)) {
-      const fc = await tileFc(tileRef(ref.ix, ref.iy, regionBbox3067, TILE_SIZE_M))
+    for (const ref of skirtTileRefs(group.ix, group.iy)) {
+      const fc = await tileFc(ref)
       if (!fc) continue
       for (const f of fc.features) {
         if (f.geometry?.type !== 'Point') continue

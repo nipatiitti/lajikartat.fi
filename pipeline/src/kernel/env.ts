@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-export interface PipelineEnv {
+interface PipelineEnv {
   MML_API_KEY?: string
 }
 

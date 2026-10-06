@@ -1,16 +1,17 @@
-import type { Confidence } from '$lib/scoring/core/types'
-
-// Properties carried by each candidate feature in the served GeoJSON (see pipeline
-// load.ts `renderProps`). The map colours/filters straight off these; the full
-// factor breakdown loads on demand via candidates.remote.
-export interface CandidateProps {
-  id: string
-  name: string | null
-  composite: number
-  confidence: Confidence
-  areaHa: number | null
-}
-
 export interface CandidateFilter {
   minComposite: number
+}
+
+export interface PaintOptions {
+  /** [value, colour] ramp stops, ascending. */
+  ramp: Array<[number, string]>
+  /** User opacity slider 0..1. */
+  opacity: number
+  visible: boolean
+}
+
+/** Sources and layers a species layer family appends on top of a basemap style. */
+export interface StyleAdditions {
+  sources: Record<string, import('maplibre-gl').SourceSpecification>
+  layers: import('maplibre-gl').LayerSpecification[]
 }

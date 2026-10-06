@@ -11,58 +11,40 @@ import type {
 import type { CompositeResult } from '@scoring'
 import type { TileRef } from './config'
 
-export type Confidence = 'high' | 'med' | 'low'
-export type SourceId = 'mml' | 'gtk' | 'syke' | 'corine' | 'metsakeskus' | 'luke'
-export type LayerGeometry = 'polygon' | 'line' | 'point' | 'raster'
+export type SourceId = 'mml' | 'gtk' | 'syke' | 'luke'
 
-/** A logical layer a species needs, decoupled from the live source schema. */
+/** A logical vector layer a species needs, decoupled from the live source schema. */
 export interface LayerSpec {
   key: string
   source: SourceId
   /** Candidate collection-name substrings, resolved against the live schema. */
   resolve: string[]
-  geometry: LayerGeometry
+  geometry: 'polygon' | 'line' | 'point'
   /**
-   * Optional extra query params for the source connector. Recognised beyond the
-   * raw WFS params (endpoint/typeName/outputFormat):
-   * - `tiled: 'true'` — fetch a WFS candidate layer per acquisition tile instead
-   *   of one region-wide request (needed for large layers like forest stands).
-   * - `filterField` + `filterValues` (csv) — keep only features whose property
-   *   matches, applied AFTER fetch so layer keys sharing a collection also share
-   *   the disk cache (e.g. tieviiva → tracks vs car roads by `kohdeluokka`).
+   * Optional extra query params for the source connector. Beyond the raw WFS
+   * params (endpoint/typeName/outputFormat): `filterField` + `filterValues`
+   * (csv) keep only features whose property matches, applied AFTER fetch so
+   * layer keys sharing a collection also share the disk cache (e.g. tieviiva →
+   * tracks vs car roads by `kohdeluokka`).
    */
   params?: Record<string, string>
   /** Raster pipelines: skip silently when the tile has no data for this layer
-   * (e.g. GTK soil outside the cached region) instead of warning. */
+   * (e.g. GTK soil outside the cached area) instead of warning. */
   optional?: boolean
 }
 
 /** All acquired layers for a run, keyed by LayerSpec.key, reprojected to 4326. */
 export type LayerBundle = Record<string, FeatureCollection>
 
-export interface RegionMask {
-  id: string
-  /** Region boundary polygon in 4326 (clip mask), or null for unclipped. */
-  polygon: Feature<Polygon | MultiPolygon> | null
-  /** Region bbox in 4326: [minLng, minLat, maxLng, maxLat]. */
-  bbox: [number, number, number, number]
-}
-
 export interface CandidateFeature {
   id: string
   name: string | null
-  /** Polygon (perch ponds) or LineString (trout stream reaches). */
   geometry: Feature<Geometry>
-  /** Area in ha for polygon candidates; null for line reaches (no area). */
+  /** Area in ha for polygon candidates. */
   areaHa: number | null
 }
 
-export interface ScoredCandidate {
-  composite: number
-  confidence: Confidence
-  factors: CompositeResult['factors']
-  why: CompositeResult['why']
-}
+export type ScoredCandidate = Pick<CompositeResult, 'composite' | 'confidence' | 'why'>
 
 /** Shared spatial primitives a feature species composes (see spatial/vector.ts). */
 export interface JoinContext {
@@ -82,14 +64,6 @@ export interface JoinContext {
     layerKey: string,
     classField: string
   ): Record<string, number>
-  /** Class composition sampled at evenly-spaced points ALONG a line reach — the
-   * line analogue of areaFractionByClass (e.g. GTK substrate along a stream). */
-  classFractionAlongLine(
-    line: Feature<LineString | MultiLineString>,
-    layerKey: string,
-    classField: string,
-    samples?: number
-  ): Record<string, number>
 }
 
 interface SpeciesBase {
@@ -97,25 +71,18 @@ interface SpeciesBase {
   layers: LayerSpec[]
 }
 
-/** Discrete-feature species (perch, chanterelle stands): each unit scored individually. */
+/** Discrete-feature species (perch ponds): each unit scored individually. */
 export interface FeatureSpecies extends SpeciesBase {
   kind: 'feature'
-  /** Layer key the candidates come from — acquired region-wide; other layers are
-   * then fetched only around candidates (candidate-driven acquisition). */
+  /** Layer key the candidates come from — acquired over the run bbox; other
+   * layers are then fetched only around candidates. */
   candidateLayerKey: string
-  extractCandidates(bundle: LayerBundle, region: RegionMask): CandidateFeature[]
+  extractCandidates(bundle: LayerBundle): CandidateFeature[]
   score(candidate: CandidateFeature, ctx: JoinContext): ScoredCandidate
-  /** Publish gate: bound what reaches D1/R2 regardless of candidate volume
-   * (high-volume species like forest stands stay perch-scale downstream). */
-  publish?: { minComposite?: number; maxFeatures?: number }
-  /** Also publish a Point-per-candidate GeoJSON (same props) for heatmap
-   * rendering — small enough to stay a single blob at national scale. */
-  publishCentroids?: boolean
-  /** Post-scoring enrichment: name each published candidate from the nearest
-   * MML paikannimi point within maxDistanceM (optionally filtered by
-   * kohdeluokka). Never overwrites a name the source data already provided. */
+  /** Name each published candidate from the nearest MML paikannimi point
+   * within maxDistanceM (optionally filtered by kohdeluokka). Never overwrites
+   * a name the source data already provided. */
   nameJoin?: { maxDistanceM: number; kohdeluokka?: number[] }
-  render: { type: 'vector'; colorBy: string }
 }
 
 /** A national raster theme a raster species samples (Luke MVMI / TWI). */
@@ -148,8 +115,6 @@ export interface RasterContext {
   tile: RasterTileRef
   /** Raw raster window for a RasterLayerSpec key, or null when unavailable. */
   band(key: string): Uint16Array | Int16Array | null
-  /** Nodata value(s) of that raster. */
-  bandNodata(key: string): readonly number[]
   /** Was this vector layer rasterised for the tile? */
   hasLayer(layerKey: string): boolean
   /** Euclidean distance (m) from each cell centre to the nearest feature of a line/polygon layer, capped at `capM`. */
@@ -162,7 +127,7 @@ export interface RasterContext {
   standEdgeDistance(capM: number): Float32Array | null
 }
 
-export interface RasterTileResult {
+interface RasterTileResult {
   /** Composite 0..1, NaN outside forest / no result. */
   composite: Float32Array
   /** 0 nodata, 1 low, 2 med, 3 high. */
@@ -176,7 +141,6 @@ export interface RasterSpecies extends SpeciesBase {
   kind: 'raster'
   rasters: RasterLayerSpec[]
   scoreTile(ctx: RasterContext): RasterTileResult
-  render: { type: 'raster'; ramp: string }
 }
 
 export type SpeciesPlugin = FeatureSpecies | RasterSpecies

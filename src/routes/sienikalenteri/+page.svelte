@@ -7,14 +7,14 @@
   import CalendarWhyCard from '$lib/components/calendar/CalendarWhyCard.svelte'
   import {
     explainPicking,
-    fmiConditions,
+    fetchWeather,
     pickingAnalysis,
-    type Conditions,
+    type DailyWeather,
     type PickingAnalysis,
     type PickingSpecies
   } from '$lib/conditions'
   import { DEFAULT_PLACE, PLACES, placeIds } from '$lib/conditions/places'
-  import { CALENDAR_COPY, DATA_SOURCES } from '$lib/copy'
+  import { CALENDAR_COPY, DATA_SOURCES, SITE_NAME } from '$lib/copy'
   import { SPECIES_RENDER } from '$lib/species/registry'
 
   const SPECIES: PickingSpecies[] = ['kantarelli', 'suppilovahvero']
@@ -22,7 +22,8 @@
 
   // ?laji= picks the row order and the back link. The lookup point comes from
   // ?paikka= (a preset town, or "oma" for the browser's position) or from
-  // ?lat=&lng= (a spot pill). Everything stays in the URL so links share.
+  // ?lat=&lng= (the map's pill). Everything stays in the URL so links share.
+  const FINLAND = { minLat: 59, maxLat: 71, minLng: 19, maxLng: 32 }
   const laji = $derived<PickingSpecies>(
     page.url.searchParams.get('laji') === 'suppilovahvero' ? 'suppilovahvero' : 'kantarelli'
   )
@@ -33,20 +34,20 @@
     const lat = Number(latP)
     const lng = Number(lngP)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-    if (lat < 59 || lat > 71 || lng < 19 || lng > 32) return null
+    if (lat < FINLAND.minLat || lat > FINLAND.maxLat || lng < FINLAND.minLng || lng > FINLAND.maxLng) return null
     return [lng, lat]
   })
   const paikka = $derived(page.url.searchParams.get('paikka'))
   const preset = $derived(paikka !== null && paikka in PLACES ? paikka : null)
   const center = $derived(custom ?? PLACES[preset ?? DEFAULT_PLACE].center)
   const coordsText = $derived(`${center[1].toFixed(2).replace('.', ',')}, ${center[0].toFixed(2).replace('.', ',')}`)
-  const regionLabel = $derived(
+  const placeLabel = $derived(
     custom
-      ? `${coordsText} · ${paikka === 'oma' ? CALENDAR_COPY.ownLocation.toLowerCase() : CALENDAR_COPY.spotLocation}`
+      ? `${coordsText} · ${paikka === 'oma' ? CALENDAR_COPY.ownLocation.toLowerCase() : CALENDAR_COPY.mapLocation}`
       : PLACES[preset ?? DEFAULT_PLACE].label
   )
-  // What the select shows: a preset id, "oma", or "kohde" for a spot link.
-  const selected = $derived(custom ? (paikka === 'oma' ? 'oma' : 'kohde') : (preset ?? DEFAULT_PLACE))
+  // What the select shows: a preset id, "oma", or "kartta" for a map link.
+  const selected = $derived(custom ? (paikka === 'oma' ? 'oma' : 'kartta') : (preset ?? DEFAULT_PLACE))
 
   let geo = $state<'idle' | 'busy' | 'failed'>('idle')
   function setParams(patch: Record<string, string | null>) {
@@ -63,7 +64,7 @@
       locate()
       return
     }
-    if (value === 'kohde') return
+    if (value === 'kartta') return
     geo = 'idle'
     setParams({ paikka: value, lat: null, lng: null })
   }
@@ -83,16 +84,16 @@
     )
   }
 
-  let conditions = $state<Conditions | null>(null)
+  let weather = $state<DailyWeather[] | null>(null)
   let status = $state<'loading' | 'ok' | 'error'>('loading')
   // Browser-only: the FMI parser needs DOMParser, so nothing runs during SSR.
   $effect(() => {
     const target = center
     if (!browser) return
     status = 'loading'
-    void fmiConditions.fetch(target).then((c) => {
-      conditions = c
-      status = c ? 'ok' : 'error'
+    void fetchWeather(target).then((d) => {
+      weather = d
+      status = d ? 'ok' : 'error'
     })
   })
 
@@ -105,10 +106,10 @@
   const order = $derived(laji === 'kantarelli' ? SPECIES : [...SPECIES].reverse())
 
   const analyses = $derived.by(() => {
-    if (!conditions) return null
+    if (!weather) return null
     const out = {} as Record<PickingSpecies, PickingAnalysis>
     for (const s of SPECIES) {
-      const a = pickingAnalysis(conditions.days, s, { hindcastDays: HINDCAST_DAYS })
+      const a = pickingAnalysis(weather, s, { hindcastDays: HINDCAST_DAYS })
       if (!a) return null
       out[s] = a
     }
@@ -154,7 +155,7 @@
 </script>
 
 <svelte:head>
-  <title>{CALENDAR_COPY.title} · lajikartat.fi</title>
+  <title>{CALENDAR_COPY.title} · {SITE_NAME}</title>
   <meta name="description" content={CALENDAR_COPY.landerCardText} />
 </svelte:head>
 
@@ -165,7 +166,7 @@
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold tracking-tight">{CALENDAR_COPY.title}</h1>
-          <p class="text-sm text-gray-500">{regionLabel} · {CALENDAR_COPY.subtitle}</p>
+          <p class="text-sm text-gray-500">{placeLabel} · {CALENDAR_COPY.subtitle}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <select
@@ -178,8 +179,8 @@
               <option value={id}>{PLACES[id].label}</option>
             {/each}
             <option value="oma">{CALENDAR_COPY.locate}</option>
-            {#if selected === 'kohde'}
-              <option value="kohde">{CALENDAR_COPY.spotLocation}</option>
+            {#if selected === 'kartta'}
+              <option value="kartta">{CALENDAR_COPY.mapLocation}</option>
             {/if}
           </select>
           <div class="flex gap-2" role="group" aria-label="Lajit">
@@ -230,8 +231,7 @@
         {/each}
       </section>
 
-      <section class="flex flex-col gap-2 text-xs text-gray-500" aria-label="Näin luet kalenteria">
-        <p>{CALENDAR_COPY.howToRead}</p>
+      <section class="flex flex-col gap-2 text-xs text-gray-500" aria-label={CALENDAR_COPY.attribution}>
         <p>{CALENDAR_COPY.caveat}</p>
         <p>
           {#if fmi}

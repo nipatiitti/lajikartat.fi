@@ -16,7 +16,7 @@ export const CHANTERELLE_LAYERS: LayerSpec[] = [
     params: { filterField: 'kohdeluokka', filterValues: '12141,12312,12313,12314,12316' }
   },
   // virtavesikapea 36311 = watercourse < 2 m — in managed forest predominantly
-  // ditches (632/655 features in the Pirkkala probe).
+  // ditches (632/655 features in a probe tile).
   {
     key: 'ditches',
     source: 'mml',
@@ -34,8 +34,8 @@ export const CHANTERELLE_LAYERS: LayerSpec[] = [
     params: { filterField: 'kohdeluokka', filterValues: '12111,12112,12121,12122,12131,12132' }
   },
   { key: 'buildings', source: 'mml', resolve: ['rakennus'], geometry: 'polygon' },
-  // M7 — GTK 1:200k surface soil where cached (Pirkanmaa); elsewhere the model
-  // falls back to MVMI paatyyppi / kasvupaikka.
+  // M7 — GTK 1:200k surface soil where cached; elsewhere the model falls
+  // back to MVMI paatyyppi / kasvupaikka.
   {
     key: 'soil',
     source: 'gtk',

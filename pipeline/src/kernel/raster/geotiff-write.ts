@@ -80,7 +80,8 @@ export function encodeGeoTiffU8(data: Uint8Array, width: number, height: number,
   const headerLen = 8
   const ifdLen = 2 + entries.length * 12 + 4
   let payloadLen = 0
-  for (const e of entries) if (e.value instanceof Uint8Array && e.value.length > 4) payloadLen += e.value.length + (e.value.length % 2)
+  for (const e of entries)
+    if (e.value instanceof Uint8Array && e.value.length > 4) payloadLen += e.value.length + (e.value.length % 2)
   const dataOffset = headerLen + ifdLen + payloadLen
   const total = dataOffset + data.length
 

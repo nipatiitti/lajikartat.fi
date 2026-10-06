@@ -1,5 +1,3 @@
-export type AccessType = 'paved' | 'gravel' | 'gated' | 'trail' | 'none'
-
 /**
  * Already-joined numeric inputs for the perch model. The ETL produces these by
  * composing the kernel's spatial primitives; the scoring library stays pure and
@@ -8,7 +6,6 @@ export type AccessType = 'paved' | 'gravel' | 'gated' | 'trail' | 'none'
 export interface PerchInput {
   // F1 — fishing-pressure / remoteness
   nearestRoadDistanceM: number | null
-  accessType: AccessType | null
   buildingsWithin100m: number | null
   isNamed: boolean
   // F2 — isolation / closed basin

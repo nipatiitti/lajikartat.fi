@@ -1,42 +1,37 @@
-# sv
+# lajikartat.fi
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta: missä iso ahven,
+kantarelli ja suppilovahvero todennäköisimmin ovat. SvelteKit on Cloudflare
+Workers (D1 + R2), MapLibre on the client, an offline pipeline in `pipeline/`.
 
-## Creating a project
+- `/[species]` — the map. Vector species (ahven) render tappable polygons from
+  an R2 GeoJSON blob and read the why-breakdown from D1 on tap; raster species
+  (kantarelli, suppilovahvero) render a 16 m suitability surface from a PMTiles
+  archive on R2 through `/tiles/...`.
+- `/sienikalenteri` — picking calendar from FMI rain and temperature, client-side only.
+- `/basemap/*` — key-injecting proxy for the MML basemaps.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Develop
 
-```sh
-# create a new project
-npx sv create my-app
+```
+pnpm install
+cp .dev.vars.example .dev.vars   # MML_API_KEY for the basemap proxy
+pnpm db:apply:local              # local D1 schema (drizzle/ migrations)
+pnpm dev
 ```
 
-To recreate this project with the same configuration:
+`pnpm check` (svelte-check), `pnpm lint` (prettier), `pnpm test` (vitest: app
+library + pipeline). `pnpm build && pnpm preview` runs the real Worker locally.
 
-```sh
-# recreate this project
-pnpm dlx sv@0.16.1 create --template minimal --types ts --add prettier tailwindcss="plugins:none" sveltekit-adapter="adapter:cloudflare+cfTarget:workers" drizzle="database:d1" mcp="ide:claude-code,vscode+setup:local" experimental="versions:kit+features:async,remoteFunctions,explicitEnvironmentVariables,handleRenderingErrors" --install pnpm .
+## Data
+
+Datasets are produced by the pipeline and loaded into the local wrangler state:
+
+```
+pnpm pipeline ingest <species> [--bbox=minX,minY,maxX,maxY]
+pnpm pipeline publish:raster <species>   # raster species only
+pnpm data:publish:local <species>        # R2 object(s) + D1 rows from pipeline/out/<species>/publish.json
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+See `pipeline/README.md`. Schema changes: edit `src/lib/server/db/schema.ts`,
+`pnpm db:generate`, `pnpm db:apply:local`.

@@ -4,5 +4,5 @@ packages:
 allowBuilds:
   '@tailwindcss/oxide': true
   workerd: true
-  sharp: true
   esbuild: true
+  sharp: set this to true or false

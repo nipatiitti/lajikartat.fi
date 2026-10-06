@@ -6,19 +6,17 @@
   "scripts": {
     "dev": "vite dev",
     "build": "rm -rf .svelte-kit/cloudflare && wrangler types --check && vite build",
-    "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
+    "preview": "wrangler dev --port 4173",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "prettier --check .",
+    "test": "vitest run",
     "format": "prettier --write .",
-    "gen": "wrangler types",
-    "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
+    "db:apply:local": "wrangler d1 migrations apply DB --local",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
-    "data:publish:local": "wrangler r2 object put lajikartat-geometry/ahven/pirkanmaa/v1.geojson --file=pipeline/out/ahven-pirkanmaa.geojson --local",
-    "data:publish:local:chanterelle": "wrangler r2 object put lajikartat-geometry/tiles/kantarelli/pirkanmaa/v2/raster.pmtiles --file=pipeline/out/raster/kantarelli/pirkanmaa/raster.pmtiles --local && wrangler r2 object put lajikartat-geometry/tiles/suppilovahvero/pirkanmaa/v2/raster.pmtiles --file=pipeline/out/raster/suppilovahvero/pirkanmaa/raster.pmtiles --local && wrangler d1 execute DB --local --file=pipeline/out/kantarelli-pirkanmaa.dataset.sql && wrangler d1 execute DB --local --file=pipeline/out/suppilovahvero-pirkanmaa.dataset.sql",
+    "data:publish:local": "node scripts/publish-local.mjs",
     "pipeline": "pnpm --filter @lajikartat/pipeline"
   },
   "devDependencies": {
@@ -29,7 +27,6 @@
     "@types/geojson": "^7946.0.16",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "^0.45.2",
     "prettier": "^3.8.3",
     "prettier-plugin-svelte": "^4.1.0",
     "prettier-plugin-tailwindcss": "^0.8.0",
@@ -38,10 +35,11 @@
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
+    "vitest": "^5.0.3",
     "wrangler": "^4.97.0"
   },
   "dependencies": {
-    "@turf/turf": "^7.3.5",
+    "drizzle-orm": "^0.45.2",
     "maplibre-gl": "^5.24.0",
     "pmtiles": "^4.5.0"
   }

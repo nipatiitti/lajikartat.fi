@@ -1,20 +1,20 @@
+import { clamp } from '$lib/scoring/core/math'
+import { scoreTone, type Tone } from '$lib/tone'
 import type { DailyWeather } from './types'
 
 // Picking-date outlook: rain-triggered flush kernels gated by temperature,
 // drought, season and frost. Display-only, never part of stored composites.
 //
-// Model spec researched 2026-08-10 (boreal chanterelle phenology literature +
-// Nordic foraging practice; see docs in the session report). Key evidence:
-// chanterelle productivity tracks rainfall of the preceding 1-3 weeks
-// (Pinna et al. 2010, Krebs et al. 2008), fruiting appears ~6-8 days after a
-// soaking rain and peaks around 11-14 days (forager consensus), suppilovahvero
-// runs later, colder and survives frost. The mm thresholds and the
-// suppilovahvero kernel are calibrated assumptions, not literature values.
+// Key evidence: chanterelle productivity tracks rainfall of the preceding 1-3
+// weeks (Pinna et al. 2010, Krebs et al. 2008), fruiting appears ~6-8 days
+// after a soaking rain and peaks around 11-14 days (forager consensus),
+// suppilovahvero runs later, colder and survives frost. The mm thresholds and
+// the suppilovahvero kernel are calibrated assumptions, not literature values.
 //
-// 2026-09-11: the model now also explains itself. `pickingAnalysis` returns the
-// rain events it counted, the peak window each one causes, per-day gate values
-// and a "projection" tail past the forecast (no further rain assumed) so a
-// forecast rain's flush is visible even when it peaks after the forecast ends.
+// `pickingAnalysis` also explains itself: it returns the rain events it
+// counted, the peak window each one causes, per-day gate values and a
+// "projection" tail past the forecast (no further rain assumed) so a forecast
+// rain's flush is visible even when it peaks after the forecast ends.
 
 export type PickingSpecies = 'kantarelli' | 'suppilovahvero'
 
@@ -135,7 +135,7 @@ interface SpeciesParams {
   flush: Curve
   /** Gate on the 14-day mean temperature. */
   temp: Curve
-  /** Gate on the day of year (southern Finland). */
+  /** Gate on the day of year. */
   season: Curve
   /** Daily mean at or below this reads as a night frost. */
   frostSoft: number
@@ -235,6 +235,12 @@ export const moistureNeedMm = (month: number): number => Math.round(30 * etFacto
  * enough for a suppilovahvero peak window (24 d) after the last forecast day.
  */
 export const PROJECTION_DAYS = 24
+/** Forecast trust decays per day ahead and never below the floor. */
+const CONFIDENCE_DECAY_PER_DAY = 0.06
+const CONFIDENCE_FLOOR = 0.4
+/** Projection days decay further from the forecast-end trust. */
+const PROJECTION_DECAY_PER_DAY = 0.04
+const PROJECTION_CONFIDENCE_FLOOR = 0.15
 
 const rainOf = (d: DailyWeather): number => d.rainMm ?? 0
 const monthOf = (iso: string): number => Number(iso.slice(5, 7))
@@ -377,7 +383,7 @@ export function pickingAnalysis(
     }
   }
 
-  const confAtForecastEnd = Math.max(0.4, 1 - 0.06 * (forecastEndIdx - todayIdx))
+  const confAtForecastEnd = Math.max(CONFIDENCE_FLOOR, 1 - CONFIDENCE_DECAY_PER_DAY * (forecastEndIdx - todayIdx))
   const out: PickingDayDetail[] = []
 
   for (let n = fromIdx; n < series.length; n++) {
@@ -431,7 +437,7 @@ export function pickingAnalysis(
     }
     if (latched) gFrost = Math.min(gFrost, p.hardMul)
 
-    const score = Math.max(0, Math.min(1, Math.max(drive, BASELINE) * gTemp * gDrought * gSeason * gFrost))
+    const score = clamp(Math.max(drive, BASELINE) * gTemp * gDrought * gSeason * gFrost)
 
     let tag: PickingTag = 'steady-fair'
     let peakInDays: number | undefined
@@ -462,8 +468,8 @@ export function pickingAnalysis(
       n < todayIdx
         ? 1
         : projected
-          ? Math.max(0.15, confAtForecastEnd - 0.04 * (n - forecastEndIdx))
-          : Math.max(0.4, 1 - 0.06 * (n - todayIdx))
+          ? Math.max(PROJECTION_CONFIDENCE_FLOOR, confAtForecastEnd - PROJECTION_DECAY_PER_DAY * (n - forecastEndIdx))
+          : Math.max(CONFIDENCE_FLOOR, 1 - CONFIDENCE_DECAY_PER_DAY * (n - todayIdx))
 
     out.push({
       date: series[n].date,
@@ -497,56 +503,87 @@ export function pickingAnalysis(
   }
 }
 
-/**
- * Pickability outlook over the forecast horizon only (no projection days).
- * Returns null for species without a model.
- */
-export function pickingOutlook(days: DailyWeather[], species: string, horizonDays = 10): PickingDay[] | null {
-  const a = pickingAnalysis(days, species, { projectionDays: 0 })
-  if (!a) return null
-  return a.days.slice(0, horizonDays + 1).map(({ date, score, tag, peakInDays, confidence }) => ({
-    date,
-    score,
-    tag,
-    peakInDays,
-    confidence
-  }))
-}
-
-/** Finnish labels for the outlook tags (drafts, owner reviews all Finnish). */
-export const PICKING_TAG_LABELS: Record<PickingTag, string> = {
-  'out-of-season': 'ei sesonkia',
-  'season-edge': 'sesongin reunalla',
-  'season-over-frost': 'pakkaset päättivät kauden',
-  'frozen-ground': 'maa jäässä',
-  'too-dry': 'liian kuivaa',
-  'too-hot': 'liian lämmintä',
-  'too-cold': 'liian kylmää',
-  'waiting-for-flush': 'sato tuloillaan',
-  'flush-rising': 'sato nousussa',
-  'flush-peak': 'sato huipussaan',
-  'flush-fading': 'sato hiipuu',
-  'early-flush-fading': 'ensisato hiipuu',
-  'no-recent-rain': 'ei tuoreita sateita',
-  'steady-fair': 'kohtalainen näkymä'
-}
-
-/** Short pill labels (drafts, owner reviews all Finnish). */
-export const PICKING_TAG_SHORT: Record<PickingTag, string> = {
-  'out-of-season': 'Ei sesonkia',
-  'season-edge': 'Sesongin reunalla',
-  'season-over-frost': 'Kausi ohi',
-  'frozen-ground': 'Maa jäässä',
-  'too-dry': 'Liian kuivaa',
-  'too-hot': 'Liian lämmintä',
-  'too-cold': 'Liian kylmää',
-  'waiting-for-flush': 'Sato tuloillaan',
-  'flush-rising': 'Sato nousussa',
-  'flush-peak': 'Sato huipussaan',
-  'flush-fading': 'Sato hiipuu',
-  'early-flush-fading': 'Alkusato hiipuu',
-  'no-recent-rain': 'Ei sateita',
-  'steady-fair': 'Kohtalainen'
+/** Finnish wording per outlook tag: the chart label, the pill, and the two sentence forms. */
+export const PICKING_TAGS: Record<PickingTag, { label: string; short: string; sentence: string; opener: string }> = {
+  'out-of-season': { label: 'ei sesonkia', short: 'Ei sesonkia', sentence: 'Ei sesonkia juuri nyt.', opener: '' },
+  'season-edge': {
+    label: 'sesongin reunalla',
+    short: 'Sesongin reunalla',
+    sentence: 'Sesongin reunalla, näkymä jää vaisuksi.',
+    opener: 'Sesongin reunalla'
+  },
+  'season-over-frost': {
+    label: 'pakkaset päättivät kauden',
+    short: 'Kausi ohi',
+    sentence: 'Pakkaset päättivät kauden tältä vuodelta.',
+    opener: ''
+  },
+  'frozen-ground': {
+    label: 'maa jäässä',
+    short: 'Maa jäässä',
+    sentence: 'Maa on jäässä, poiminta tauolla.',
+    opener: ''
+  },
+  'too-dry': {
+    label: 'liian kuivaa',
+    short: 'Liian kuivaa',
+    sentence: 'Liian kuivaa, sadetta tarvitaan ennen satoa.',
+    opener: 'Liian kuivaa nyt'
+  },
+  'too-hot': {
+    label: 'liian lämmintä',
+    short: 'Liian lämmintä',
+    sentence: 'Liian lämmintä, näkymä paranee viileämmällä säällä.',
+    opener: 'Liian lämmintä nyt'
+  },
+  'too-cold': {
+    label: 'liian kylmää',
+    short: 'Liian kylmää',
+    sentence: 'Liian kylmää sadolle juuri nyt.',
+    opener: 'Liian kylmää nyt'
+  },
+  'waiting-for-flush': {
+    label: 'sato tuloillaan',
+    short: 'Sato tuloillaan',
+    sentence: 'Sato tuloillaan.',
+    opener: 'Sato tuloillaan'
+  },
+  'flush-rising': {
+    label: 'sato nousussa',
+    short: 'Sato nousussa',
+    sentence: 'Sato nousussa.',
+    opener: 'Sato nousussa'
+  },
+  'flush-peak': {
+    label: 'sato huipussaan',
+    short: 'Sato huipussaan',
+    sentence: 'Sato huipussaan.',
+    opener: 'Sato huipussaan'
+  },
+  'flush-fading': {
+    label: 'sato hiipuu',
+    short: 'Sato hiipuu',
+    sentence: 'Sato hiipuu, uutta satoa ei vielä näköpiirissä.',
+    opener: 'Sato hiipuu'
+  },
+  'early-flush-fading': {
+    label: 'ensisato hiipuu',
+    short: 'Alkusato hiipuu',
+    sentence: 'Ensimmäinen sato hiipuu, pääsesonki on vasta edessä.',
+    opener: 'Ensimmäinen sato hiipuu'
+  },
+  'no-recent-rain': {
+    label: 'ei tuoreita sateita',
+    short: 'Ei sateita',
+    sentence: 'Ei tuoreita sateita, näkymä pysyy heikkona.',
+    opener: 'Ei tuoreita sateita'
+  },
+  'steady-fair': {
+    label: 'kohtalainen näkymä',
+    short: 'Kohtalainen',
+    sentence: 'Kohtalainen näkymä koko jaksolle.',
+    opener: 'Kohtalainen näkymä'
+  }
 }
 
 // Shared date formatters: the pill, the recommendation sentence and the chart
@@ -585,43 +622,6 @@ export function bestPickingWindow(outlook: PickingDay[]): PickingWindow | null {
   return { start: outlook[start].date, end: outlook[end].date }
 }
 
-// Sentence fragments per tag when no window is worth recommending.
-const NO_WINDOW_SENTENCES: Record<PickingTag, string> = {
-  'flush-peak': 'Sato huipussaan.',
-  'flush-rising': 'Sato nousussa.',
-  'flush-fading': 'Sato hiipuu, uutta satoa ei vielä näköpiirissä.',
-  'early-flush-fading': 'Ensimmäinen sato hiipuu, pääsesonki on vasta edessä.',
-  'waiting-for-flush': 'Sato tuloillaan.',
-  'steady-fair': 'Kohtalainen näkymä koko jaksolle.',
-  'no-recent-rain': 'Ei tuoreita sateita, näkymä pysyy heikkona.',
-  'too-dry': 'Liian kuivaa, sadetta tarvitaan ennen satoa.',
-  'too-hot': 'Liian lämmintä, näkymä paranee viileämmällä säällä.',
-  'too-cold': 'Liian kylmää sadolle juuri nyt.',
-  'season-edge': 'Sesongin reunalla, näkymä jää vaisuksi.',
-  'out-of-season': 'Ei sesonkia juuri nyt.',
-  'season-over-frost': 'Pakkaset päättivät kauden tältä vuodelta.',
-  'frozen-ground': 'Maa on jäässä, poiminta tauolla.'
-}
-
-// Sentence openers per tag when a window exists ("nyt" contrasts the poor
-// present against the better days ahead).
-const WINDOW_OPENERS: Record<PickingTag, string> = {
-  'flush-peak': 'Sato huipussaan',
-  'flush-rising': 'Sato nousussa',
-  'flush-fading': 'Sato hiipuu',
-  'early-flush-fading': 'Ensimmäinen sato hiipuu',
-  'waiting-for-flush': 'Sato tuloillaan',
-  'steady-fair': 'Kohtalainen näkymä',
-  'no-recent-rain': 'Ei tuoreita sateita',
-  'too-dry': 'Liian kuivaa nyt',
-  'too-hot': 'Liian lämmintä nyt',
-  'too-cold': 'Liian kylmää nyt',
-  'season-edge': 'Sesongin reunalla',
-  'out-of-season': '',
-  'season-over-frost': '',
-  'frozen-ground': ''
-}
-
 // These states end the discussion; a window would be misleading next to them.
 const WINDOW_IGNORED = new Set<PickingTag>(['out-of-season', 'season-over-frost', 'frozen-ground'])
 // A window starting today is "heti" only when the harvest is already up.
@@ -633,14 +633,14 @@ export function pickingSentence(outlook: PickingDay[], window: PickingWindow | n
   const today = outlook[0]
 
   if (window === null || WINDOW_IGNORED.has(today.tag)) {
-    let s = NO_WINDOW_SENTENCES[today.tag]
+    let s = PICKING_TAGS[today.tag].sentence
     if ((today.tag === 'flush-rising' || today.tag === 'waiting-for-flush') && today.peakInDays !== undefined) {
       s = `${s.slice(0, -1)}, huippu noin ${today.peakInDays} pv päästä.`
     }
     return s
   }
 
-  const opener = WINDOW_OPENERS[today.tag]
+  const opener = PICKING_TAGS[today.tag].opener
   if (window.start === today.date && window.end === today.date) {
     return `${opener}, paras päivä on tänään.`
   }
@@ -655,7 +655,7 @@ const daysBetween = (fromIso: string, toIso: string): number =>
 
 export interface PickingPill {
   label: string
-  tone: 'green' | 'amber' | 'gray'
+  tone: Tone
   /** "paras ti" style hint, only when clearly better days are ahead. */
   suffix: string | null
 }
@@ -664,7 +664,6 @@ export interface PickingPill {
 export function pickingPill(outlook: PickingDay[], window: PickingWindow | null): PickingPill | null {
   if (outlook.length === 0) return null
   const today = outlook[0]
-  const tone = today.score >= 0.55 ? 'green' : today.score >= 0.3 ? 'amber' : 'gray'
 
   let suffix: string | null = null
   if (window !== null && !WINDOW_IGNORED.has(today.tag) && window.start > today.date) {
@@ -676,5 +675,5 @@ export function pickingPill(outlook: PickingDay[], window: PickingWindow | null)
       suffix = `paras ${ref}`
     }
   }
-  return { label: PICKING_TAG_SHORT[today.tag], tone, suffix }
+  return { label: PICKING_TAGS[today.tag].short, tone: scoreTone(today.score), suffix }
 }

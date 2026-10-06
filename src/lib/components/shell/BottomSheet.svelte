@@ -16,7 +16,12 @@
     children: Snippet
   } = $props()
 
-  const SNAP_HEIGHTS: Record<SheetSnap, string> = { half: '45dvh', full: '85dvh' }
+  // Snap heights as a share of the viewport; below DISMISS the card closes.
+  const SNAP: Record<SheetSnap, number> = { half: 0.45, full: 0.85 }
+  const DISMISS = 0.25
+  const MIN_PX = 56
+  const MAX_SHARE = 0.92
+  const DRAG_THRESHOLD_PX = 5
 
   let sheet = $state<HTMLDivElement>()
   let dragging = $state(false)
@@ -34,8 +39,8 @@
 
     const onMove = (ev: PointerEvent) => {
       const delta = startY - ev.clientY
-      if (Math.abs(delta) > 5) moved = true
-      dragHeight = Math.max(56, Math.min(window.innerHeight * 0.92, startHeight + delta))
+      if (Math.abs(delta) > DRAG_THRESHOLD_PX) moved = true
+      dragHeight = Math.max(MIN_PX, Math.min(window.innerHeight * MAX_SHARE, startHeight + delta))
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
@@ -46,11 +51,11 @@
       if (!moved) return
       const vh = window.innerHeight
       // Swiping well below the half snap dismisses the card.
-      if (height < vh * 0.25 && onclose) {
+      if (height < vh * DISMISS && onclose) {
         onclose()
         return
       }
-      snap = Math.abs(vh * 0.45 - height) < Math.abs(vh * 0.85 - height) ? 'half' : 'full'
+      snap = Math.abs(vh * SNAP.half - height) < Math.abs(vh * SNAP.full - height) ? 'half' : 'full'
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -67,7 +72,7 @@
   class="fixed inset-x-0 bottom-0 z-20 flex flex-col rounded-t-2xl bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.15)] {dragging
     ? ''
     : 'transition-[height] duration-200 ease-out'}"
-  style:height={dragHeight !== null ? `${dragHeight}px` : SNAP_HEIGHTS[snap]}
+  style:height={dragHeight !== null ? `${dragHeight}px` : `${SNAP[snap] * 100}dvh`}
 >
   <button
     type="button"

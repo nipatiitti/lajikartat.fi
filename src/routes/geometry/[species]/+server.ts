@@ -5,25 +5,19 @@ import { getEnv } from '$lib/server/env'
 import { speciesDataset } from '$lib/server/db/schema'
 import type { RequestHandler } from './$types'
 
-// Serves the published vector geometry for a species from the GEOMETRY R2 bucket.
-// The 2.6 MB FeatureCollection is fetched once by the map and rendered client-side;
-// keeping it behind the R2 binding (vs bundling it) matches the remote serving path.
-// `?kind=centroids` serves the Point blob heatmap species also publish.
-export const GET: RequestHandler = async ({ params, platform, url }) => {
+// Serves the published vector geometry of a feature species from R2: the map
+// fetches the FeatureCollection once and renders it client-side.
+export const GET: RequestHandler = async ({ params, platform }) => {
   if (!platform) throw error(500, 'platform bindings unavailable')
 
-  const kind = url.searchParams.get('kind') === 'centroids' ? 'centroids' : 'feature'
-
-  // Resolve the latest published dataset of that kind → its R2 key (generic across species).
   const env = getEnv(platform)
   const db = getDb(env.DB)
   const [dataset] = await db
     .select({ r2Key: speciesDataset.r2Key })
     .from(speciesDataset)
-    .where(and(eq(speciesDataset.species, params.species), eq(speciesDataset.kind, kind)))
+    .where(and(eq(speciesDataset.species, params.species), eq(speciesDataset.kind, 'feature')))
     .orderBy(desc(speciesDataset.publishedAt))
     .limit(1)
-
   if (!dataset) throw error(404, `no published geometry for species "${params.species}"`)
 
   const object = await env.GEOMETRY.get(dataset.r2Key)

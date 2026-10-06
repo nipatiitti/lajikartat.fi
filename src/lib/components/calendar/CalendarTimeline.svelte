@@ -11,8 +11,9 @@
 </script>
 
 <script lang="ts">
-  import { dayLabel, PICKING_TAG_LABELS, rangeLabel } from '$lib/conditions'
-  import { CALENDAR_COPY } from '$lib/copy'
+  import { dayLabel, PICKING_TAGS, rangeLabel } from '$lib/conditions'
+  import { CALENDAR_COPY, scoreIndex } from '$lib/copy'
+  import { scoreTone, TONE_HEX } from '$lib/tone'
 
   // One shared time axis: rain bars, temperature line, then a row per species
   // with the rain events the model counted arcing to the peak window they
@@ -182,7 +183,6 @@
     return out
   }
 
-  const scoreFill = (s: number): string => (s >= 0.55 ? '#16a34a' : s >= 0.3 ? '#f59e0b' : '#d1d5db')
   const stripCells = (row: TimelineRow) =>
     row.days
       .map((d) => ({ d, i: idxOf.get(d.date) }))
@@ -358,10 +358,10 @@
             width={dayW - 2}
             height={STRIP_H}
             rx="2"
-            fill={scoreFill(d.score)}
+            fill={TONE_HEX[scoreTone(d.score)]}
             opacity={0.35 + 0.65 * d.confidence}
           >
-            <title>{dayLabel(d.date)} {PICKING_TAG_LABELS[d.tag]} · {Math.round(d.score * 100)}/100</title>
+            <title>{dayLabel(d.date)} {PICKING_TAGS[d.tag].label} · {scoreIndex(d.score)}/100</title>
           </rect>
         {/each}
       {/each}

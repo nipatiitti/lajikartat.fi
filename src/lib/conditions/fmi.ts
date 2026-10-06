@@ -1,7 +1,6 @@
-import type { Conditions, ConditionsProvider, DailyWeather } from './types'
+import type { DailyWeather } from './types'
 
-// FMI open data (validated live 2026-08-10): BsWfs XML, CORS `*` → fetched
-// straight from the browser.
+// FMI open data: BsWfs XML, CORS `*` → fetched straight from the browser.
 //
 // Observations: the daily stored query does NOT support `latlon` (it is
 // silently ignored and zero features match), so we query a bbox around the
@@ -16,30 +15,30 @@ import type { Conditions, ConditionsProvider, DailyWeather } from './types'
 
 // 42 days of history: the suppilovahvero flush kernel reaches back 35 days,
 // so a shorter window is blind to the rain events that matter most in autumn,
-// and the calendar draws the last four weeks. The headline sum stays a 14-day
-// read. The edited point forecast runs about 10 days out.
+// and the calendar draws the last four weeks. The edited point forecast runs
+// about 10 days out.
 const HISTORY_DAYS = 42
-const SUMMARY_DAYS = 14
 const FORECAST_DAYS = 10
 const BOX_HALF_DEG = 0.4
 
-const cache = new Map<string, Promise<Conditions | null>>()
+const cache = new Map<string, Promise<DailyWeather[] | null>>()
 
-export const fmiConditions: ConditionsProvider = {
-  fetch(center: [number, number]): Promise<Conditions | null> {
-    // Region-level cache key: 0.1° ≈ 10 km — one fetch per area per session.
-    const key = `${center[1].toFixed(1)},${center[0].toFixed(1)}`
-    let hit = cache.get(key)
-    if (!hit) {
-      hit = fetchConditions(center).catch(() => null)
-      cache.set(key, hit)
-    }
-    return hit
+/**
+ * Daily observations followed by forecast days for a [lng, lat] point,
+ * ascending; null on any failure. One fetch per 0.1° (≈ 10 km) per session.
+ */
+export function fetchWeather(center: [number, number]): Promise<DailyWeather[] | null> {
+  const key = `${center[1].toFixed(1)},${center[0].toFixed(1)}`
+  let hit = cache.get(key)
+  if (!hit) {
+    hit = fetchDays(center).catch(() => null)
+    cache.set(key, hit)
   }
+  return hit
 }
 
-async function fetchConditions(center: [number, number]): Promise<Conditions | null> {
-  // The forecast is an enhancement: its failure never hides the chip.
+async function fetchDays(center: [number, number]): Promise<DailyWeather[] | null> {
+  // The forecast is an enhancement: its failure never hides the observations.
   const [obs, forecast] = await Promise.all([
     fetchObservations(center),
     fetchForecast(center).catch(() => [] as DailyWeather[])
@@ -47,8 +46,8 @@ async function fetchConditions(center: [number, number]): Promise<Conditions | n
   if (!obs) return null
 
   // Observation days end yesterday; forecast fills today onward.
-  const lastObsDate = obs.days.at(-1)?.date ?? ''
-  return { ...obs, days: [...obs.days, ...forecast.filter((d) => d.date > lastObsDate)] }
+  const lastObsDate = obs.at(-1)?.date ?? ''
+  return [...obs, ...forecast.filter((d) => d.date > lastObsDate)]
 }
 
 interface BsWfsValue {
@@ -80,7 +79,7 @@ const wfsUrl = (params: Record<string, string>): URL => {
   return url
 }
 
-async function fetchObservations([lng, lat]: [number, number]): Promise<Conditions | null> {
+async function fetchObservations([lng, lat]: [number, number]): Promise<DailyWeather[] | null> {
   const to = new Date()
   const from = new Date(to.getTime() - HISTORY_DAYS * 24 * 3600 * 1000)
   const url = wfsUrl({
@@ -123,8 +122,7 @@ async function fetchObservations([lng, lat]: [number, number]): Promise<Conditio
     station.byDate.set(date, day)
   }
 
-  // Nearest station that measures rain; a temperature-only station is the
-  // fallback (the chip then shows temperature alone).
+  // Nearest station that measures rain; a temperature-only station is the fallback.
   const best = [...stations.values()].sort(
     (a, b) => Number(b.rainDays > 0) - Number(a.rainDays > 0) || a.dist2 - b.dist2
   )[0]
@@ -133,19 +131,7 @@ async function fetchObservations([lng, lat]: [number, number]): Promise<Conditio
   const days: DailyWeather[] = [...best.byDate.entries()]
     .map(([date, d]) => ({ date, rainMm: d.rainMm, meanTempC: d.meanTempC, source: 'obs' as const }))
     .sort((a, b) => (a.date < b.date ? -1 : 1))
-
-  const summaryDays = days.slice(-SUMMARY_DAYS)
-  const rain = summaryDays.filter((d) => d.rainMm !== null).map((d) => d.rainMm as number)
-  const temp = summaryDays.filter((d) => d.meanTempC !== null).map((d) => d.meanTempC as number)
-  if (rain.length === 0 && temp.length === 0) return null
-
-  return {
-    rainSumMm: rain.length > 0 ? Math.round(rain.reduce((a, b) => a + b, 0)) : null,
-    meanTempC: temp.length > 0 ? Math.round((temp.reduce((a, b) => a + b, 0) / temp.length) * 10) / 10 : null,
-    days,
-    from,
-    to
-  }
+  return days.some((d) => d.rainMm !== null || d.meanTempC !== null) ? days : null
 }
 
 async function fetchForecast([lng, lat]: [number, number]): Promise<DailyWeather[]> {

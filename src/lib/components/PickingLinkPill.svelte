@@ -1,55 +1,35 @@
 <script lang="ts">
   import { browser } from '$app/env'
-  import {
-    bestPickingWindow,
-    conditionsSummary,
-    fmiConditions,
-    pickingOutlook,
-    pickingPill,
-    type Conditions
-  } from '$lib/conditions'
-  import { CALENDAR_COPY, TONE_CLASSES } from '$lib/copy'
+  import { bestPickingWindow, fetchWeather, pickingAnalysis, pickingPill, type DailyWeather } from '$lib/conditions'
+  import { CALENDAR_COPY } from '$lib/copy'
+  import { TONE_CHIP } from '$lib/tone'
 
-  // One-word picking state that links to the calendar. Fetches FMI
-  // client-side and renders nothing on failure, like the chip it replaced.
-  let {
-    center,
-    species,
-    spot = false
-  }: {
-    /** [lng, lat] the weather is read for. */
-    center: [number, number]
-    species: string
-    /** Carry the coordinates into the calendar (a selected spot). */
-    spot?: boolean
-  } = $props()
+  // One-word picking state for the map's location, linking to the calendar at
+  // the same point. Fetches FMI client-side and renders nothing on failure.
+  let { center, species }: { center: [number, number]; species: string } = $props()
 
-  let conditions = $state<Conditions | null>(null)
+  let days = $state<DailyWeather[] | null>(null)
   $effect(() => {
     const target = center
     if (!browser) return
-    void fmiConditions.fetch(target).then((c) => (conditions = c))
+    void fetchWeather(target).then((d) => (days = d))
   })
 
-  const outlook = $derived(conditions ? pickingOutlook(conditions.days, species) : null)
-  const pill = $derived(outlook ? pickingPill(outlook, bestPickingWindow(outlook)) : null)
-  const summary = $derived(conditions ? conditionsSummary(conditions) : null)
-  const SUMMARY_TONES = { good: 'green', ok: 'amber', poor: 'gray' } as const
-  const label = $derived(pill?.label ?? summary?.label ?? null)
-  const tone = $derived(pill?.tone ?? (summary ? SUMMARY_TONES[summary.tone] : 'gray'))
-  const href = $derived(
-    `/sienikalenteri?laji=${species}` + (spot ? `&lat=${center[1].toFixed(4)}&lng=${center[0].toFixed(4)}` : '')
-  )
+  const pill = $derived.by(() => {
+    const outlook = days && pickingAnalysis(days, species, { projectionDays: 0 })?.days
+    return outlook ? pickingPill(outlook, bestPickingWindow(outlook)) : null
+  })
+  const href = $derived(`/sienikalenteri?laji=${species}&lat=${center[1].toFixed(4)}&lng=${center[0].toFixed(4)}`)
 </script>
 
-{#if label}
+{#if pill}
   <a
     {href}
-    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium {TONE_CLASSES[tone]}"
+    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium {TONE_CHIP[pill.tone]}"
     title={CALENDAR_COPY.openCalendar}
   >
-    <span>{label}</span>
-    {#if pill?.suffix}<span class="font-normal opacity-75">{pill.suffix}</span>{/if}
+    <span>{pill.label}</span>
+    {#if pill.suffix}<span class="font-normal opacity-75">{pill.suffix}</span>{/if}
     <span class="opacity-60" aria-hidden="true">›</span>
   </a>
 {/if}

@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit'
+import { edgeCache } from '$lib/server/cache'
 import { getEnv } from '$lib/server/env'
 import type { RequestHandler } from './$types'
 
@@ -7,19 +8,22 @@ import type { RequestHandler } from './$types'
 // glyphs. All of it lives under this one host, so a single host-rewriting catch-all
 // proxy keeps the key server-side and points every asset back at same-origin /basemap.
 const MML_HOST = 'https://avoin-karttakuva.maanmittauslaitos.fi'
+// Only the vector-tile styles and the WMTS rasters in basemaps.ts are proxied.
+const ALLOWED_PREFIXES = ['vectortiles/', 'avoin/wmts/']
 
 export const GET: RequestHandler = async ({ params, url, platform, request }) => {
   if (!platform) throw error(500, 'platform bindings unavailable')
 
+  if (!ALLOWED_PREFIXES.some((p) => params.path.startsWith(p))) throw error(404, 'not a basemap asset')
   const apiKey = getEnv(platform).MML_API_KEY
-  // No key → 204 so the map degrades to a blank style; the perch polygons still render.
+  // No key → 204 so the map degrades to a blank style; the species layers still render.
   if (!apiKey) return new Response(null, { status: 204 })
 
   // style.json / tilejson are rewritten to the current origin and must never be cached
   // (a stale relative-URL copy breaks MapLibre's worker tile fetches). Only the
   // immutable binary assets (.pbf, sprite, glyphs) get edge-cached.
   const isMeta = /(stylejson|tilejson|\.json)(\?|$)/.test(params.path)
-  const cache = isMeta ? undefined : (platform.caches as unknown as { default?: Cache }).default
+  const cache = isMeta ? undefined : edgeCache(platform)
   const hit = await cache?.match(request)
   if (hit) return hit
 

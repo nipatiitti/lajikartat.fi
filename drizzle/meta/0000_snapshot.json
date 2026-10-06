@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9bc6749c-684a-4ec9-93ba-5fe291cf26c8",
+  "id": "20a160da-b514-430d-8c06-92a2cd71263a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "candidate": {
@@ -21,13 +21,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "source_feature_id": {
-          "name": "source_feature_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -35,124 +28,11 @@
           "notNull": false,
           "autoincrement": false
         },
-        "centroid_lat": {
-          "name": "centroid_lat",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "centroid_lng": {
-          "name": "centroid_lng",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "min_lat": {
-          "name": "min_lat",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "min_lng": {
-          "name": "min_lng",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "max_lat": {
-          "name": "max_lat",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "max_lng": {
-          "name": "max_lng",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "area_ha": {
           "name": "area_ha",
           "type": "real",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "region": {
-          "name": "region",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pipeline_version": {
-          "name": "pipeline_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "cand_species_region_idx": {
-          "name": "cand_species_region_idx",
-          "columns": [
-            "species",
-            "region"
-          ],
-          "isUnique": false
-        },
-        "cand_bbox_idx": {
-          "name": "cand_bbox_idx",
-          "columns": [
-            "min_lat",
-            "min_lng",
-            "max_lat",
-            "max_lng"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "candidate_score": {
-      "name": "candidate_score",
-      "columns": {
-        "candidate_id": {
-          "name": "candidate_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "species": {
-          "name": "species",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pipeline_version": {
-          "name": "pipeline_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         },
         "composite": {
@@ -169,61 +49,24 @@
           "notNull": true,
           "autoincrement": false
         },
-        "factors": {
-          "name": "factors",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "why": {
           "name": "why",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "scored_at": {
-          "name": "scored_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         }
       },
       "indexes": {
-        "cand_score_rank_idx": {
-          "name": "cand_score_rank_idx",
+        "candidate_species_idx": {
+          "name": "candidate_species_idx",
           "columns": [
-            "species",
-            "composite"
-          ],
-          "isUnique": false
-        },
-        "cand_score_pk_idx": {
-          "name": "cand_score_pk_idx",
-          "columns": [
-            "candidate_id",
-            "pipeline_version"
+            "species"
           ],
           "isUnique": false
         }
       },
-      "foreignKeys": {
-        "candidate_score_candidate_id_candidate_id_fk": {
-          "name": "candidate_score_candidate_id_candidate_id_fk",
-          "tableFrom": "candidate_score",
-          "tableTo": "candidate",
-          "columnsFrom": [
-            "candidate_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -238,22 +81,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "region": {
-          "name": "region",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pipeline_version": {
-          "name": "pipeline_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "kind": {
           "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -272,11 +108,27 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "species_dataset_species_kind_version_pk": {
+          "columns": [
+            "species",
+            "kind",
+            "version"
+          ],
+          "name": "species_dataset_species_kind_version_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

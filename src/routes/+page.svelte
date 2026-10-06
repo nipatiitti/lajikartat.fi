@@ -1,85 +1,55 @@
 <script lang="ts">
-  import { CALENDAR_COPY, DATA_SOURCES } from '$lib/copy'
+  import { CALENDAR_COPY, COPY, DATA_SOURCES, SITE_NAME } from '$lib/copy'
   import { SPECIES_RENDER, speciesIds } from '$lib/species/registry'
 </script>
 
 <svelte:head>
-  <title>lajikartat.fi · lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta</title>
+  <title>{SITE_NAME} · {COPY.tagline}</title>
   <meta
     name="description"
     content="Avoin kartta-apuri kalastajille ja sienestäjille: missä isot ahvenet, kantarellit ja suppilovahverot todennäköisimmin ovat avoimen paikkatiedon perusteella."
   />
 </svelte:head>
 
+{#snippet heading(text: string)}
+  <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">{text}</h2>
+{/snippet}
+
+{#snippet card(href: string, title: string, text: string, cta: string)}
+  <a
+    {href}
+    class="flex h-full flex-col gap-1.5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow"
+  >
+    <span class="font-semibold">{title}</span>
+    <span class="text-sm text-gray-600">{text}</span>
+    <span class="mt-auto pt-1 text-sm font-medium text-blue-600">{cta} →</span>
+  </a>
+{/snippet}
+
 <div class="min-h-dvh bg-gray-50 text-gray-900">
   <main class="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-10 sm:py-16">
-    <header class="flex flex-col gap-3">
-      <h1 class="text-3xl font-bold tracking-tight">lajikartat.fi</h1>
-      <p class="max-w-xl text-gray-600">
-        Lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta. Kartat arvioivat, missä lajin elinympäristö on
-        parhaimmillaan. Ne eivät takaa saalista, vaan kertovat mistä kannattaa aloittaa.
-      </p>
+    <header class="flex flex-col gap-2">
+      <h1 class="text-3xl font-bold tracking-tight">{SITE_NAME}</h1>
+      <p class="max-w-xl text-gray-600">{COPY.tagline}</p>
     </header>
 
-    <section class="flex flex-col gap-3" aria-label="Lajit">
-      <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Lajit</h2>
+    <section class="flex flex-col gap-3" aria-label={COPY.species}>
+      {@render heading(COPY.species)}
       <ul class="grid gap-3 sm:grid-cols-2">
         {#each speciesIds as id (id)}
           {@const s = SPECIES_RENDER[id]}
-          <li>
-            <a
-              href="/{id}"
-              class="flex h-full flex-col gap-1.5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow"
-            >
-              <span class="flex items-baseline justify-between gap-2">
-                <span class="font-semibold">{s.label}</span>
-                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">{s.regionLabel}</span>
-              </span>
-              <span class="text-sm text-gray-600">{s.description}</span>
-              <span class="mt-auto pt-1 text-sm font-medium text-blue-600">Avaa kartta →</span>
-            </a>
-          </li>
+          <li>{@render card(`/${id}`, s.label, s.description, COPY.openMap)}</li>
         {/each}
       </ul>
     </section>
 
     <section class="flex flex-col gap-3" aria-label={CALENDAR_COPY.title}>
-      <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">{CALENDAR_COPY.title}</h2>
-      <a
-        href="/sienikalenteri"
-        class="flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow"
-      >
-        <span class="flex items-baseline justify-between gap-2">
-          <span class="font-semibold">{CALENDAR_COPY.landerCardTitle}</span>
-          <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">Pirkkala</span>
-        </span>
-        <span class="text-sm text-gray-600">{CALENDAR_COPY.landerCardText}</span>
-        <span class="pt-1 text-sm font-medium text-blue-600">{CALENDAR_COPY.openCalendar} →</span>
-      </a>
+      {@render heading(CALENDAR_COPY.title)}
+      {@render card('/sienikalenteri', CALENDAR_COPY.title, CALENDAR_COPY.landerCardText, CALENDAR_COPY.openCalendar)}
     </section>
 
-    <section class="flex flex-col gap-3" aria-label="Näin luet karttaa">
-      <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Näin luet karttaa</h2>
-      <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
-        <p>
-          <strong class="text-gray-800">Potentiaali</strong> (0–100) vertailee alueita: se kertoo, kuinka hyvin kohde
-          vastaa lajin tunnettuja elinympäristövaatimuksia. Se ei ennusta saalista. Arvio lasketaan etukäteen avoimista
-          aineistoista, ja maastossa asiat voivat aina olla toisin.
-          <strong class="text-gray-800">Varmuus</strong> kertoo, kuinka kattavaa lähtötieto kohteella oli.
-        </p>
-        {#each speciesIds as id (id)}
-          {@const s = SPECIES_RENDER[id]}
-          <p><strong class="text-gray-800">{s.label}:</strong> {s.howToRead}</p>
-        {/each}
-        <p>
-          Kohdetta napauttamalla näet perustelut: mitkä tekijät nostivat tai laskivat arviota ja mihin aineistoon ne
-          perustuvat.
-        </p>
-      </div>
-    </section>
-
-    <section class="flex flex-col gap-2 text-xs text-gray-500" aria-label="Aineistot ja vastuut">
-      <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Aineistot ja vastuut</h2>
+    <section class="flex flex-col gap-2 text-xs text-gray-500" aria-label={COPY.sources}>
+      {@render heading(COPY.sources)}
       <p>
         Aineistot:
         {#each DATA_SOURCES as source, i (source.name)}
@@ -99,7 +69,7 @@
         rajoitusosista. Sienten tunnistus on aina poimijan omalla vastuulla. Jätä osa sadosta metsään. Isojen ahventen
         kannat ovat herkkiä: vapauta suurimmat kalat.
       </p>
-      <p class="pt-2 text-gray-400">lajikartat.fi · avoin harrasteprojekti</p>
+      <p class="pt-2 text-gray-400">{SITE_NAME} · {COPY.hobbyProject}</p>
     </section>
   </main>
 </div>

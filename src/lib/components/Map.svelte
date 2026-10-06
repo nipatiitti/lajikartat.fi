@@ -1,29 +1,13 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css'
-  import type { Geometry, Position } from 'geojson'
-  import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
+  import type { Map as MlMap } from 'maplibre-gl'
   import { untrack } from 'svelte'
   import { resolveBasemapStyle, type BasemapId } from '$lib/map/basemaps'
-  import {
-    candidateLayers,
-    candidateSources,
-    fillOpacity,
-    filterExpression,
-    heatmapOpacity,
-    LAYER_FILL,
-    LAYER_HEAT,
-    LAYER_LINE,
-    LAYER_RELIEF,
-    lineOpacity,
-    rasterLayers,
-    rasterSources,
-    reliefColor,
-    reliefOpacity,
-    SOURCE_CANDIDATES,
-    SOURCE_CENTROIDS,
-    SOURCE_RELIEF,
-    type CandidatePaintOptions
-  } from '$lib/map/layers'
+  import * as candidate from '$lib/map/candidate-layer'
+  import { FINLAND_VIEW } from '$lib/map/finland'
+  import { bboxOf } from '$lib/map/geometry'
+  import * as relief from '$lib/map/relief-layer'
+  import type { PaintOptions, StyleAdditions } from '$lib/map/types'
   import type { Camera } from '$lib/map/url'
   import type { MapPageState } from '$lib/state/map-page.svelte'
   import type { SpeciesRenderConfig } from '$lib/species/registry'
@@ -38,91 +22,71 @@
     initialCamera?: Camera | null
   } = $props()
 
+  const FIT_PADDING = 40
+  const SPOT_FIT = { padding: 90, maxZoom: 14, duration: 600 }
+
   let container: HTMLDivElement
   let map: MlMap | undefined
   let ready = $state(false)
   let hoveredId: string | null = null
   let prevSelected: string | null = null
+  // Without a URL camera the first dataset decides the view, once.
+  let fitted = false
 
-  const paintOptions = $derived<CandidatePaintOptions>({
-    render: config.render,
+  const paint = $derived<PaintOptions>({
     ramp: config.ramp,
     opacity: mapState.layers.candidateOpacity,
     visible: mapState.layers.candidatesVisible
   })
 
+  // Only one layer family is mounted at a time; a species switch across
+  // families tears the other down first.
+  function unmountAll(m: MlMap) {
+    candidate.unmount(m)
+    relief.unmount(m)
+  }
+
+  function additions(): StyleAdditions | null {
+    if (config.render === 'raster')
+      return mapState.tiles && relief.specs(mapState.tiles, paint, mapState.filter.minComposite)
+    return candidate.specs(mapState.geojson, paint, mapState.filter.minComposite)
+  }
+
+  function mount(m: MlMap) {
+    const a = additions()
+    if (!a) return
+    unmountAll(m)
+    for (const [id, spec] of Object.entries(a.sources)) m.addSource(id, spec)
+    for (const layer of a.layers) m.addLayer(layer)
+    if (config.render === 'vector') {
+      reapplySelection()
+      bindTapHandlers(m)
+    }
+  }
+
   function setHover(id: string | null) {
     if (!map) return
-    if (hoveredId && hoveredId !== id)
-      map.setFeatureState({ source: SOURCE_CANDIDATES, id: hoveredId }, { hover: false })
+    if (hoveredId && hoveredId !== id) candidate.setHover(map, hoveredId, false)
     hoveredId = id
-    if (id) map.setFeatureState({ source: SOURCE_CANDIDATES, id }, { hover: true })
-  }
-
-  // Two layer families share the map: vector candidates (tappable) and the
-  // raster suitability surface. Only one is mounted at a time; switching
-  // species across families tears the other down first.
-  function removeCandidateLayers() {
-    if (!map) return
-    for (const id of [LAYER_HEAT, LAYER_FILL, LAYER_LINE, LAYER_RELIEF]) if (map.getLayer(id)) map.removeLayer(id)
-    for (const id of [SOURCE_CANDIDATES, SOURCE_CENTROIDS, SOURCE_RELIEF]) if (map.getSource(id)) map.removeSource(id)
-  }
-
-  function ensureCandidateLayers() {
-    if (!map) return
-    if (config.render === 'raster') {
-      if (map.getSource(SOURCE_RELIEF)) return
-      const tiles = mapState.tiles
-      if (!tiles) return
-      removeCandidateLayers()
-      for (const [id, spec] of Object.entries(rasterSources(tiles))) map.addSource(id, spec)
-      for (const layer of rasterLayers(paintOptions, mapState.filter.minComposite)) map.addLayer(layer)
-      return
-    }
-    if (map.getSource(SOURCE_CANDIDATES)) return
-    removeCandidateLayers()
-    const sources = candidateSources(mapState.geojson, mapState.centroids)
-    for (const [id, spec] of Object.entries(sources)) map.addSource(id, spec)
-    for (const layer of candidateLayers(paintOptions)) map.addLayer(layer)
-    applyFilter()
-    reapplySelection()
-    bindTapHandlers()
-  }
-
-  function applyFilter() {
-    if (!map) return
-    if (map.getLayer(LAYER_RELIEF)) {
-      map.setPaintProperty(
-        LAYER_RELIEF,
-        'color-relief-color',
-        reliefColor(paintOptions.ramp, mapState.filter.minComposite)
-      )
-      return
-    }
-    if (!map.getLayer(LAYER_FILL)) return
-    const expr = filterExpression(mapState.filter)
-    map.setFilter(LAYER_FILL, expr)
-    map.setFilter(LAYER_LINE, expr)
-    map.setFilter(LAYER_HEAT, expr)
+    if (id) candidate.setHover(map, id, true)
   }
 
   // Delegated layer events are bound once the fill layer exists (binding them
   // for a missing layer makes MapLibre log an error on every pointer event).
   let tapHandlersBound = false
-  function bindTapHandlers() {
-    const m = map
-    if (!m || tapHandlersBound) return
+  function bindTapHandlers(m: MlMap) {
+    if (tapHandlersBound) return
     tapHandlersBound = true
-    m.on('click', LAYER_FILL, (e) => {
+    m.on('click', candidate.LAYER_FILL, (e) => {
       const f = e.features?.[0]
       mapState.select(f ? String(f.properties?.id) : null)
     })
-    m.on('mousemove', LAYER_FILL, (e) => {
+    m.on('mousemove', candidate.LAYER_FILL, (e) => {
       m.getCanvas().style.cursor = 'pointer'
       const f = e.features?.[0]
       setHover(f ? String(f.properties?.id) : null)
     })
-    m.on('mouseleave', LAYER_FILL, () => {
+    m.on('mouseleave', candidate.LAYER_FILL, () => {
       m.getCanvas().style.cursor = ''
       setHover(null)
     })
@@ -131,45 +95,25 @@
   // Feature-state does not survive source re-creation (basemap switches).
   function reapplySelection() {
     if (!map || !mapState.selectedId) return
-    map.setFeatureState({ source: SOURCE_CANDIDATES, id: mapState.selectedId }, { selected: true })
+    candidate.setSelected(map, mapState.selectedId, true)
     prevSelected = mapState.selectedId
-  }
-
-  function bboxOf(geom: Geometry): [number, number, number, number] | null {
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
-    const walk = (c: Position | Position[] | Position[][] | Position[][][]) => {
-      if (typeof c[0] === 'number') {
-        const [x, y] = c as Position
-        if (x < minX) minX = x
-        if (y < minY) minY = y
-        if (x > maxX) maxX = x
-        if (y > maxY) maxY = y
-      } else {
-        for (const sub of c as unknown[]) walk(sub as Position)
-      }
-    }
-    if ('coordinates' in geom) walk(geom.coordinates as Position[])
-    return Number.isFinite(minX) ? [minX, minY, maxX, maxY] : null
   }
 
   function flyTo(id: string) {
     if (!map || !mapState.geojson) return
     const f = mapState.geojson.features.find((x) => String(x.id ?? x.properties?.id) === id)
-    if (!f?.geometry) return
-    const b = bboxOf(f.geometry)
-    if (b) map.fitBounds(b, { padding: 90, maxZoom: 14, duration: 600 })
+    const b = bboxOf(f?.geometry)
+    if (b) map.fitBounds(b, SPOT_FIT)
   }
 
-  function jumpTo(center: [number, number], zoom: number) {
-    map?.jumpTo({ center, zoom })
+  function reportCamera(m: MlMap) {
+    const c = m.getCenter()
+    mapState.camera = { zoom: m.getZoom(), lat: c.lat, lng: c.lng }
   }
 
   // Init — runs ONCE. The map instance persists across species/config changes;
   // every config-dependent read here is untracked so no dependency can sneak in
-  // and recreate the map (the old recreate-on-config bug).
+  // and recreate the map.
   $effect(() => {
     let disposed = false
     void (async () => {
@@ -177,43 +121,37 @@
       if (disposed) return
 
       const { style, center, zoom } = await untrack(async () => {
-        const style = await resolveBasemapStyle(mapState.layers.basemapId)
         const cam = initialCamera
+        fitted = cam !== null
         return {
-          style,
-          center: (cam ? [cam.lng, cam.lat] : config.initialView.center) as [number, number],
-          zoom: cam ? cam.zoom : config.initialView.zoom
+          style: await resolveBasemapStyle(mapState.layers.basemapId),
+          center: (cam ? [cam.lng, cam.lat] : FINLAND_VIEW.center) as [number, number],
+          zoom: cam ? cam.zoom : FINLAND_VIEW.zoom
         }
       })
 
       if (disposed) return
-      const m = new maplibregl.Map({
-        container,
-        style,
-        center,
-        zoom,
-        attributionControl: { compact: true }
-      })
+      const m = new maplibregl.Map({ container, style, center, zoom, attributionControl: { compact: true } })
       map = m
 
       m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-      const geolocate = new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserLocation: true
-      })
-      m.addControl(geolocate, 'top-right')
+      m.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showUserLocation: true
+        }),
+        'top-right'
+      )
       m.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
 
       m.on('load', () => {
-        ensureCandidateLayers()
+        untrack(() => mount(m))
         ready = true
-        mapState.registerMap({ flyTo, jumpTo })
+        reportCamera(m)
+        mapState.registerMap({ flyTo })
       })
-      m.on('moveend', () => {
-        const c = m.getCenter()
-        mapState.camera = { zoom: m.getZoom(), lat: c.lat, lng: c.lng }
-      })
+      m.on('moveend', () => reportCamera(m))
     })()
 
     return () => {
@@ -228,66 +166,59 @@
     }
   })
 
-  // Data: swap source contents when a species' blobs arrive (map never recreates).
+  // Data: a species' blob or tile descriptor arrives. Vector data swaps in
+  // place; a raster-dem source cannot swap its tiles, so it remounts.
   $effect(() => {
-    const polygons = mapState.geojson
-    const centroids = mapState.centroids
-    if (!ready || !map || config.render === 'raster') return
-    const polySource = map.getSource(SOURCE_CANDIDATES) as GeoJSONSource | undefined
-    if (!polySource) {
-      ensureCandidateLayers()
-      return
-    }
-    if (polygons) polySource.setData(polygons)
-    const centroidSource = map.getSource(SOURCE_CENTROIDS) as GeoJSONSource | undefined
-    if (centroidSource && centroids) centroidSource.setData(centroids)
-  })
-
-  // Raster: a new tile descriptor (species switch) remounts the source — a
-  // raster-dem source cannot swap its tiles in place.
-  $effect(() => {
+    const geojson = mapState.geojson
     const tiles = mapState.tiles
-    if (!ready || !map || config.render !== 'raster') return
-    if (map.getSource(SOURCE_RELIEF)) removeCandidateLayers()
-    // Paint and filter are read inside; they must not remount the source.
-    if (tiles) untrack(() => ensureCandidateLayers())
-  })
-
-  // Filter changes are cheap setFilter calls — never re-parse the FeatureCollection.
-  $effect(() => {
-    void mapState.filter.minComposite
     if (!ready || !map) return
-    applyFilter()
-  })
-
-  // Paint: user opacity / layer toggle / species render mode.
-  $effect(() => {
-    const opts = paintOptions
-    if (!ready || !map) return
-    if (map.getLayer(LAYER_RELIEF)) {
-      map.setPaintProperty(LAYER_RELIEF, 'color-relief-opacity', reliefOpacity(opts))
+    const m = map
+    if (config.render === 'raster') {
+      if (relief.isMounted(m)) relief.unmount(m)
+      if (tiles) untrack(() => mount(m))
       return
     }
-    if (!map.getLayer(LAYER_FILL)) return
-    map.setPaintProperty(LAYER_FILL, 'fill-opacity', fillOpacity(opts))
-    map.setPaintProperty(LAYER_LINE, 'line-opacity', lineOpacity(opts))
-    map.setPaintProperty(LAYER_HEAT, 'heatmap-opacity', heatmapOpacity(opts))
+    if (!candidate.isMounted(m)) untrack(() => mount(m))
+    else if (geojson) candidate.setData(m, geojson)
+  })
+
+  // First dataset: fit the view to its extent unless the URL set a camera.
+  $effect(() => {
+    const bounds = mapState.bounds
+    if (!ready || !map || !bounds || fitted) return
+    fitted = true
+    map.fitBounds(bounds, { padding: FIT_PADDING, duration: 0 })
+  })
+
+  // Filter: a cheap setFilter / new colour expression, never a data reload.
+  $effect(() => {
+    const min = mapState.filter.minComposite
+    if (!ready || !map) return
+    if (config.render === 'raster') {
+      if (relief.isMounted(map)) relief.applyFilter(map, config.ramp, min)
+    } else if (candidate.isMounted(map)) candidate.applyFilter(map, min)
+  })
+
+  // Paint: user opacity / layer toggle.
+  $effect(() => {
+    const p = paint
+    if (!ready || !map) return
+    if (config.render === 'raster') {
+      if (relief.isMounted(map)) relief.applyPaint(map, p)
+    } else if (candidate.isMounted(map)) candidate.applyPaint(map, p)
   })
 
   // Selection via feature-state.
   $effect(() => {
     const id = mapState.selectedId
-    if (!ready || !map) return
-    if (prevSelected && prevSelected !== id) {
-      map.setFeatureState({ source: SOURCE_CANDIDATES, id: prevSelected }, { selected: false })
-    }
-    if (id) map.setFeatureState({ source: SOURCE_CANDIDATES, id }, { selected: true })
+    if (!ready || !map || !candidate.isMounted(map)) return
+    if (prevSelected && prevSelected !== id) candidate.setSelected(map, prevSelected, false)
+    if (id) candidate.setSelected(map, id, true)
     prevSelected = id
   })
 
-  // Basemap switch: one setStyle path for vector styles and synthesized raster
-  // styles. transformStyle re-appends freshly built candidate sources/layers on
-  // top of the incoming style; feature-state and filters are re-applied after.
+  // Basemap switch: transformStyle re-appends freshly built species sources and
+  // layers on top of the incoming style; feature-state is re-applied after.
   let appliedBasemap: BasemapId | null = null
   $effect(() => {
     const id = mapState.layers.basemapId
@@ -301,29 +232,15 @@
     const m = map
     void resolveBasemapStyle(id).then((next) => {
       if (!m.getContainer().isConnected) return
-      const raster = config.render === 'raster'
-      const tiles = mapState.tiles
+      const a = untrack(additions)
       m.setStyle(next, {
         transformStyle: (_prev, incoming) => ({
           ...incoming,
-          sources: {
-            ...incoming.sources,
-            ...(raster ? (tiles ? rasterSources(tiles) : {}) : candidateSources(mapState.geojson, mapState.centroids))
-          },
-          layers: [
-            ...incoming.layers,
-            ...(raster
-              ? tiles
-                ? rasterLayers(paintOptions, mapState.filter.minComposite)
-                : []
-              : candidateLayers(paintOptions))
-          ]
+          sources: { ...incoming.sources, ...a?.sources },
+          layers: [...incoming.layers, ...(a?.layers ?? [])]
         })
       })
-      m.once('idle', () => {
-        applyFilter()
-        reapplySelection()
-      })
+      m.once('idle', reapplySelection)
     })
   })
 </script>

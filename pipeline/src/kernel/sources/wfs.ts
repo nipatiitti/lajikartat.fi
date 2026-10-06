@@ -5,16 +5,13 @@ import { readCache, writeCache } from './cache'
 type Bbox = [number, number, number, number]
 
 // Default open WFS endpoints. typeNames must be validated against each service's
-// GetCapabilities before use; until a layer supplies one it is skipped (F3 null).
+// GetCapabilities before use; until a layer supplies one it is skipped.
 export const WFS_ENDPOINTS: Partial<Record<SourceId, string>> = {
-  gtk: 'https://gtkdata.gtk.fi/arcgis/services/Rajapinnat/GTK_Maapera_WFS/MapServer/WFSServer',
-  // Metsäkeskus avoin metsätieto stand service (GeoServer OWS; validated live
-  // 2026-08: typeName v1:stand, outputFormat application/json, no key).
-  metsakeskus: 'https://avoin.metsakeskus.fi/rajapinnat/v1/stand/ows'
-  // syke / corine: provide endpoint + typeName via LayerSpec.params after validation.
+  gtk: 'https://gtkdata.gtk.fi/arcgis/services/Rajapinnat/GTK_Maapera_WFS/MapServer/WFSServer'
+  // syke: endpoint + typeName come from LayerSpec.params.
 }
 
-export interface WfsRequest {
+interface WfsRequest {
   source: SourceId
   endpoint: string
   typeName: string

@@ -1,7 +1,7 @@
-import { TILE_SIZE_M, tileRef } from '../config'
+import { GRID, gridSize, TILE_SIZE_M, tileRef, type Bbox } from '../config'
 import type { RasterTileRef } from '../types'
 
-export type Bbox = [number, number, number, number]
+export type { Bbox }
 
 /** Luke MS-NFI (MVMI) 2023 rasters: 16 m ETRS-TM35FIN grid (header parsed 2026-09-11). */
 export const MVMI = {
@@ -38,7 +38,7 @@ export interface PixelWindow {
 const CELL = MVMI.cell
 
 /** Snap a 3067 bbox outward onto the 16 m MVMI lattice. */
-export function snapRegion(bbox: Bbox): Bbox {
+export function snapBbox(bbox: Bbox): Bbox {
   const [minX, minY, maxX, maxY] = bbox
   const fx = (x: number) => MVMI.originX + Math.floor((x - MVMI.originX) / CELL) * CELL
   const cx = (x: number) => MVMI.originX + Math.ceil((x - MVMI.originX) / CELL) * CELL
@@ -47,23 +47,20 @@ export function snapRegion(bbox: Bbox): Bbox {
   return [fx(minX), fy(minY), cx(maxX), cy(maxY)]
 }
 
-/** Number of tile columns / rows the vector tile grid has for a region. */
-export function gridSize(regionBbox: Bbox, tileSizeM = TILE_SIZE_M): { nx: number; ny: number } {
-  return {
-    nx: Math.ceil((regionBbox[2] - regionBbox[0]) / tileSizeM),
-    ny: Math.ceil((regionBbox[3] - regionBbox[1]) / tileSizeM)
-  }
-}
-
 /**
  * The raster tile for grid cell (ix, iy): the vector tile's bbox snapped to the
  * lattice. Tiles are non-overlapping, the last column / row absorbs the
  * remainder, and every raster bbox lies within 16 m of its vector bbox, so the
  * vector skirt tiles (and their MML cache keys) still cover any padding.
  */
-export function rasterTileRef(ix: number, iy: number, regionBbox: Bbox, tileSizeM = TILE_SIZE_M): RasterTileRef {
+export function rasterTileRef(
+  ix: number,
+  iy: number,
+  regionBbox: Bbox = GRID.bbox3067,
+  tileSizeM = TILE_SIZE_M
+): RasterTileRef {
   if (tileSizeM % CELL !== 0) throw new Error(`tile size ${tileSizeM} is not a multiple of ${CELL} m`)
-  const snapped = snapRegion(regionBbox)
+  const snapped = snapBbox(regionBbox)
   const { nx, ny } = gridSize(regionBbox, tileSizeM)
   const x0 = snapped[0] + ix * tileSizeM
   const y0 = snapped[1] + iy * tileSizeM

@@ -9,6 +9,7 @@
 
 <script lang="ts">
   import { scoreIndex } from '$lib/copy'
+  import { clamp } from '$lib/scoring/core/math'
 
   let { axes }: { axes: StarAxis[] } = $props()
 
@@ -17,8 +18,6 @@
   const R = 78
   const LABEL_R = 92
   const RINGS = [0.25, 0.5, 0.75, 1]
-
-  const clamp = (v: number) => Math.min(1, Math.max(0, v))
 
   function point(i: number, r: number): [number, number] {
     const a = (Math.PI * 2 * i) / axes.length - Math.PI / 2

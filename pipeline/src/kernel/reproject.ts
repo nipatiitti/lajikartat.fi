@@ -10,9 +10,6 @@ const to4326 = (p: Position): Position => {
   return p.length > 2 ? [x, y, p[2]] : [x, y]
 }
 
-/** Reproject a single [x, y] coordinate from EPSG:3067 to WGS84. */
-export const reprojectPoint3067to4326 = (p: Position): Position => to4326(p)
-
 /** Reproject a single [lng, lat] coordinate from WGS84 to EPSG:3067. */
 export const reprojectPoint4326to3067 = (p: Position): Position => {
   const [x, y] = proj4('EPSG:4326', 'EPSG:3067', [p[0], p[1]])
@@ -23,7 +20,7 @@ type Coords = Position | Coords[]
 const mapCoords = (coords: Coords): Coords =>
   typeof coords[0] === 'number' ? to4326(coords as Position) : (coords as Coords[]).map(mapCoords)
 
-// Some services (Metsäkeskus GeoServer) attach a per-feature/collection `bbox`
+// Some services attach a per-feature/collection `bbox`
 // member in the source CRS. After reprojection it is stale — and turf 7's
 // bbox() RETURNS an existing member instead of recomputing, which silently
 // poisons every bbox-seeded spatial primitive. Strip it at every level.
@@ -32,7 +29,7 @@ const dropBbox = <T extends { bbox?: unknown }>(o: T): Omit<T, 'bbox'> => {
   return rest
 }
 
-export function reprojectGeometry3067to4326(geom: Geometry): Geometry {
+function reprojectGeometry3067to4326(geom: Geometry): Geometry {
   if (geom.type === 'GeometryCollection') {
     const gc = geom as GeometryCollection
     return { ...dropBbox(gc), geometries: gc.geometries.map(reprojectGeometry3067to4326) }

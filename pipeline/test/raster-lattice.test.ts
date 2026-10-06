@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { REGIONS, tileGrid, tileRef } from '../src/kernel/config'
+import { GRID, gridSize, tileRef, tileRefs } from '../src/kernel/config'
 import {
   cellToXY,
-  gridSize,
   MVMI,
   mvmiWindow,
   rasterTileRef,
-  snapRegion,
+  snapBbox,
   TWI_COL_OFFSET,
   TWI_ROW_OFFSET,
   twiWindow,
   xyToCell
 } from '../src/kernel/raster/lattice'
+
+// A 7×8 km dev bbox (Pirkkala forests) and a 102×120 km one (Pirkanmaa).
+const SMALL: [number, number, number, number] = [320000, 6811000, 327000, 6819000]
+const LARGE: [number, number, number, number] = [283000, 6780000, 385000, 6900000]
 
 describe('lattice', () => {
   it('knows the TWI offset from the MVMI origin', () => {
@@ -19,10 +22,13 @@ describe('lattice', () => {
     expect(TWI_ROW_OFFSET).toBe(207)
   })
 
-  for (const id of ['pirkkala', 'pirkanmaa', 'finland'] as const) {
-    it(`snaps ${id} outward onto the 16 m lattice`, () => {
-      const bbox = REGIONS[id].bbox3067
-      const s = snapRegion(bbox)
+  for (const [name, bbox] of [
+    ['small', SMALL],
+    ['large', LARGE],
+    ['national', GRID.bbox3067]
+  ] as const) {
+    it(`snaps the ${name} bbox outward onto the 16 m lattice`, () => {
+      const s = snapBbox(bbox)
       expect(s[0]).toBeLessThanOrEqual(bbox[0])
       expect(s[1]).toBeLessThanOrEqual(bbox[1])
       expect(s[2]).toBeGreaterThanOrEqual(bbox[2])
@@ -34,41 +40,39 @@ describe('lattice', () => {
     })
   }
 
-  it('tiles pirkkala as one tile within 16 m of the vector tile', () => {
-    const region = REGIONS.pirkkala.bbox3067
-    expect(gridSize(region)).toEqual({ nx: 1, ny: 1 })
-    const r = rasterTileRef(0, 0, region)
-    const v = tileRef(0, 0, region)
+  it('tiles a small bbox as one tile within 16 m of the vector tile', () => {
+    expect(gridSize(SMALL)).toEqual({ nx: 1, ny: 1 })
+    const r = rasterTileRef(0, 0, SMALL)
+    const v = tileRef(0, 0, SMALL)
     expect(r.vectorRef).toEqual(v)
     for (let k = 0; k < 4; k++) expect(Math.abs(r.bbox3067[k] - v.bbox[k])).toBeLessThan(16)
     expect(r.width * 16).toBe(r.bbox3067[2] - r.bbox3067[0])
     expect(r.height * 16).toBe(r.bbox3067[3] - r.bbox3067[1])
   })
 
-  it('tiles pirkanmaa without gaps or overlaps and 625 cells per full tile', () => {
-    const region = REGIONS.pirkanmaa.bbox3067
-    const { nx, ny } = gridSize(region)
-    expect(nx * ny).toBe(tileGrid(region).length)
-    const a = rasterTileRef(3, 4, region)
-    const right = rasterTileRef(4, 4, region)
-    const up = rasterTileRef(3, 5, region)
+  it('tiles the national grid without gaps or overlaps and 625 cells per full tile', () => {
+    const { nx, ny } = gridSize(GRID.bbox3067)
+    expect(nx * ny).toBe(tileRefs().length)
+    const a = rasterTileRef(23, 18)
+    const right = rasterTileRef(24, 18)
+    const up = rasterTileRef(23, 19)
     expect(a.width).toBe(625)
     expect(a.height).toBe(625)
     expect(right.bbox3067[0]).toBe(a.bbox3067[2])
     expect(up.bbox3067[1]).toBe(a.bbox3067[3])
-    const last = rasterTileRef(nx - 1, ny - 1, region)
-    expect(last.bbox3067[2]).toBe(snapRegion(region)[2])
-    expect(last.bbox3067[3]).toBe(snapRegion(region)[3])
+    const last = rasterTileRef(nx - 1, ny - 1)
+    expect(last.bbox3067[2]).toBe(snapBbox(GRID.bbox3067)[2])
+    expect(last.bbox3067[3]).toBe(snapBbox(GRID.bbox3067)[3])
   })
 
-  it('shares pirkanmaa tile bboxes with the finland grid', () => {
-    const p = rasterTileRef(0, 0, REGIONS.pirkanmaa.bbox3067)
-    const f = rasterTileRef(23, 18, REGIONS.finland.bbox3067)
-    expect(f.bbox3067).toEqual(p.bbox3067)
+  it('keeps dev bboxes on the national tile lattice (cached MML tiles stay valid)', () => {
+    const national = tileRefs(LARGE).map((t) => rasterTileRef(t.ix, t.iy))
+    const local = rasterTileRef(0, 0, LARGE)
+    expect(national.some((t) => t.bbox3067.every((v, k) => v === local.bbox3067[k]))).toBe(true)
   })
 
   it('maps windows and cells consistently', () => {
-    const r = rasterTileRef(0, 0, REGIONS.pirkkala.bbox3067)
+    const r = rasterTileRef(0, 0, SMALL)
     const w = mvmiWindow(r.bbox3067)
     expect(w.right - w.left).toBe(r.width)
     expect(w.bottom - w.top).toBe(r.height)

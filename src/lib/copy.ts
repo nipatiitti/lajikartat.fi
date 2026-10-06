@@ -1,7 +1,8 @@
 import type { Confidence } from '$lib/scoring/core/types'
 
-// Shared Finnish UI terms. Anything used by ≥2 components lives here so the
-// wording can't drift. Single-language site: no i18n framework by design.
+// Finnish UI strings. Single-language site: no i18n framework by design.
+
+export const SITE_NAME = 'lajikartat.fi'
 
 export const CONFIDENCE_LABELS: Record<Confidence, string> = {
   high: 'korkea',
@@ -9,65 +10,47 @@ export const CONFIDENCE_LABELS: Record<Confidence, string> = {
   low: 'matala'
 }
 
-export const CONFIDENCE_CHIP_CLASSES: Record<Confidence, string> = {
-  high: 'bg-green-100 text-green-800',
-  med: 'bg-amber-100 text-amber-800',
-  low: 'bg-gray-200 text-gray-600'
-}
-
-/**
- * Compact axis labels for the factor star plot, keyed by the factor id baked
- * into the D1 why JSON. Fallback = the factor's full label.
- */
+/** Compact axis labels for the factor star plot, keyed by the factor id in the D1 why JSON. */
 export const FACTOR_SHORT_LABELS: Record<string, string> = {
   F1: 'Syrjäisyys',
   F2: 'Eristyneisyys',
   F3: 'Veden väri',
-  F5: 'Koko',
-  M1: 'Puusto',
-  M2: 'Kasvupaikka',
-  M3: 'Ikä',
-  M4: 'Valoisuus',
-  M5: 'Kosteus',
-  M6: 'Reunat',
-  M7: 'Maaperä',
-  M9: 'Syrjäisyys'
+  F5: 'Koko'
 }
 
 export const COPY = {
-  siteName: 'lajikartat.fi',
+  tagline: 'Lajikohtaisia potentiaalikarttoja avoimesta paikkatiedosta.',
+  species: 'Lajit',
+  openMap: 'Avaa kartta',
+  home: 'Etusivulle',
   loading: 'Ladataan…',
   loadError: 'Lataus epäonnistui.',
   detailError: 'Tietojen lataus epäonnistui.',
   close: 'Sulje',
   potential: 'Potentiaali',
   potentialCaveat: 'Potentiaali vertailee alueita, ei ennusta saalista.',
-  confidence: 'Varmuus',
   unknownSpecies: 'Tuntematon laji',
   reasons: 'Perustelut',
   noData: 'ei tietoa',
+  unnamed: 'Nimetön',
+  spot: 'Kohteen tiedot',
   layers: 'Tasot',
   basemap: 'Pohjakartta',
   minPotential: 'Potentiaali vähintään',
   copyCoords: 'Kopioi koordinaatit',
   openInMaps: 'Avaa Google Mapsissa',
   share: 'Jaa',
-  copied: 'Kopioitu'
+  copied: 'Kopioitu',
+  sources: 'Aineistot ja vastuut',
+  hobbyProject: 'avoin harrasteprojekti'
 } as const
-
-/** Green go, amber maybe, gray nothing: the one quality scale for chips. */
-export const TONE_CLASSES: Record<'green' | 'amber' | 'gray', string> = {
-  green: 'bg-green-100 text-green-800',
-  amber: 'bg-amber-100 text-amber-800',
-  gray: 'bg-gray-100 text-gray-700'
-}
 
 export const CALENDAR_COPY = {
   title: 'Sienikalenteri',
   subtitle: 'Sateet, lämpötila ja arvioitu sato',
   back: 'Takaisin karttaan',
   openCalendar: 'Avaa sienikalenteri',
-  spotLocation: 'kohteen sijainti',
+  mapLocation: 'kartan sijainti',
   ownLocation: 'Oma sijainti',
   locate: 'Oma sijainti (GPS)',
   locating: 'Haetaan sijaintia…',
@@ -78,7 +61,6 @@ export const CALENDAR_COPY = {
   forecast: 'ennuste',
   projection: 'arvio ilman lisäsadetta',
   today: 'tänään',
-  forecastEnd: 'ennuste päättyy',
   rain: 'Sade',
   temp: 'Lämpö',
   frost: 'yöpakkanen',
@@ -91,23 +73,15 @@ export const CALENDAR_COPY = {
   loading: 'Haetaan säätietoja…',
   unavailable: 'Säätietoja ei saatu Ilmatieteen laitokselta. Yritä hetken päästä uudelleen.',
   attribution: 'Ilmatieteen laitos, havainnot ja ennuste',
-  caveat:
-    'Arvio perustuu sademalliin, ei havaintoihin sienistä. Ennusteen jälkeinen jakso olettaa, ettei lisää sadetta tule. ' +
-    'Sesonkiajat on viritetty Etelä-Suomeen. Maastossa tilanne voi olla toinen.',
-  howToRead:
-    'Kunnon sade käynnistää sadon. Kantarelli nousee noin viikon päästä ja on parhaimmillaan 11-17 päivää sateesta. ' +
-    'Suppilovahvero on hitaampi: huippu 2-3 viikkoa sateesta, ja se kestää pakkasta.',
-  landerCardTitle: 'Sienikalenteri',
-  landerCardText:
-    'Milloin kantarellia ja suppilovahveroa kannattaa lähteä hakemaan. Sateista laskettu satoarvio Pirkkalan seudulle.'
+  caveat: 'Arvio perustuu sademalliin, ei havaintoihin sienistä.',
+  landerCardText: 'Milloin kantarellia ja suppilovahveroa kannattaa lähteä hakemaan. Sateista laskettu satoarvio.'
 } as const
 
-// Data sources behind the candidate layers. CC BY 4.0 attribution is a
-// license requirement once the site is public.
+// Data sources behind the map layers. CC BY 4.0 attribution is a license requirement.
 export const DATA_SOURCES = [
   { name: 'Maanmittauslaitos', url: 'https://www.maanmittauslaitos.fi/avoindata' },
+  { name: 'Luonnonvarakeskus (Luke)', url: 'https://www.luke.fi/fi/avoin-tieto' },
   { name: 'Geologian tutkimuskeskus (GTK)', url: 'https://www.gtk.fi/palvelut/aineistot-ja-verkkopalvelut/' },
-  { name: 'Suomen metsäkeskus', url: 'https://www.metsakeskus.fi/fi/avoin-metsa-ja-luontotieto' },
   { name: 'Suomen ympäristökeskus (SYKE)', url: 'https://www.syke.fi/fi/ymparistotieto/avoin-tieto' },
   { name: 'Ilmatieteen laitos', url: 'https://www.ilmatieteenlaitos.fi/avoin-data' }
 ] as const
